@@ -5,16 +5,10 @@ import { useApp } from "./providers";
 import Link from "next/link";
 import Image from "next/image";
 import { blockchainManager } from "../utils/blockchain";
-import { WalletConnection } from "../components/WalletConnection";
 
 export default function HomePage() {
-  const {
-    user,
-    isLoading,
-    isAuthenticated,
-    playerStats,
-    walletAddress,
-  } = useApp();
+  const { user, isLoading, isAuthenticated, playerStats, walletAddress } =
+    useApp();
   const [gameStats, setGameStats] = useState({
     totalGames: 0,
     bestScore: 0,
@@ -43,11 +37,7 @@ export default function HomePage() {
       } catch (error) {
         console.error("Failed to load leaderboard:", error);
         // Fallback to demo data
-        setWeeklyLeaderboard([
-          { player: "0x1234...5678", score: 15420, altitude: 8500 },
-          { player: "0xabcd...efgh", score: 12890, altitude: 7200 },
-          { player: "0x9876...4321", score: 11350, altitude: 6800 },
-        ]);
+        setWeeklyLeaderboard([]);
       } finally {
         setLeaderboardLoading(false);
       }
@@ -74,9 +64,9 @@ export default function HomePage() {
   }
 
   return (
-    <div
-      className="min-h-screen text-white relative overflow-hidden bg-sky-extend"
-    >
+    <div className="min-h-screen text-white relative overflow-hidden bg-sky-extend">
+      {/* Wallet Navbar is now in layout.tsx - Top Right */}
+
       {/* Flowing cloud decorations distributed across full screen */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden">
         {/* Top section clouds - horizontal movement */}
@@ -86,11 +76,11 @@ export default function HomePage() {
           width={80}
           height={48}
           className="absolute opacity-30 pixel-perfect"
-          style={{ 
+          style={{
             imageRendering: "pixelated",
             top: "4rem",
             left: "-120px",
-            animation: "cloudFloat 25s linear infinite"
+            animation: "cloudFloat 25s linear infinite",
           }}
         />
         <Image
@@ -99,15 +89,15 @@ export default function HomePage() {
           width={60}
           height={40}
           className="absolute opacity-25 pixel-perfect"
-          style={{ 
+          style={{
             imageRendering: "pixelated",
             top: "8rem",
             left: "-120px",
             animation: "cloudFloat 30s linear infinite",
-            animationDelay: "3s"
+            animationDelay: "3s",
           }}
         />
-        
+
         {/* Upper-middle section clouds - floating in place */}
         <Image
           src="/cloud1.png"
@@ -115,11 +105,11 @@ export default function HomePage() {
           width={100}
           height={60}
           className="absolute opacity-35 pixel-perfect"
-          style={{ 
+          style={{
             imageRendering: "pixelated",
             top: "12rem",
             left: "25%",
-            animation: "cloudBob 8s ease-in-out infinite"
+            animation: "cloudBob 8s ease-in-out infinite",
           }}
         />
         <Image
@@ -128,15 +118,15 @@ export default function HomePage() {
           width={70}
           height={45}
           className="absolute opacity-20 pixel-perfect"
-          style={{ 
+          style={{
             imageRendering: "pixelated",
             top: "16rem",
             right: "2rem",
             animation: "cloudBob 10s ease-in-out infinite",
-            animationDelay: "2s"
+            animationDelay: "2s",
           }}
         />
-        
+
         {/* Middle section clouds - gentle drift */}
         <Image
           src="/cloud1.png"
@@ -144,12 +134,12 @@ export default function HomePage() {
           width={90}
           height={55}
           className="absolute opacity-30 pixel-perfect"
-          style={{ 
+          style={{
             imageRendering: "pixelated",
             top: "50%",
             left: "2rem",
             transform: "translateY(-50%)",
-            animation: "cloudDrift 15s ease-in-out infinite"
+            animation: "cloudDrift 15s ease-in-out infinite",
           }}
         />
         <Image
@@ -158,16 +148,16 @@ export default function HomePage() {
           width={85}
           height={50}
           className="absolute opacity-25 pixel-perfect"
-          style={{ 
+          style={{
             imageRendering: "pixelated",
             top: "45%",
             right: "25%",
             transform: "translateY(-50%)",
             animation: "cloudDrift 12s ease-in-out infinite",
-            animationDelay: "4s"
+            animationDelay: "4s",
           }}
         />
-        
+
         {/* Lower-middle section clouds */}
         <Image
           src="/cloud1.png"
@@ -175,12 +165,12 @@ export default function HomePage() {
           width={75}
           height={45}
           className="absolute opacity-35 pixel-perfect"
-          style={{ 
+          style={{
             imageRendering: "pixelated",
             bottom: "20rem",
             left: "4rem",
             animation: "cloudBob 9s ease-in-out infinite",
-            animationDelay: "1s"
+            animationDelay: "1s",
           }}
         />
         <Image
@@ -189,15 +179,15 @@ export default function HomePage() {
           width={95}
           height={55}
           className="absolute opacity-20 pixel-perfect"
-          style={{ 
+          style={{
             imageRendering: "pixelated",
             bottom: "24rem",
             right: "1rem",
             animation: "cloudDrift 14s ease-in-out infinite",
-            animationDelay: "3s"
+            animationDelay: "3s",
           }}
         />
-        
+
         {/* Bottom section clouds */}
         <Image
           src="/cloud1.png"
@@ -205,12 +195,12 @@ export default function HomePage() {
           width={65}
           height={40}
           className="absolute opacity-35 pixel-perfect"
-          style={{ 
+          style={{
             imageRendering: "pixelated",
             bottom: "10rem",
             left: "33%",
             animation: "cloudBob 7s ease-in-out infinite",
-            animationDelay: "1.5s"
+            animationDelay: "1.5s",
           }}
         />
         <Image
@@ -219,12 +209,12 @@ export default function HomePage() {
           width={75}
           height={48}
           className="absolute opacity-20 pixel-perfect"
-          style={{ 
+          style={{
             imageRendering: "pixelated",
             bottom: "5rem",
             right: "2rem",
             animation: "cloudBob 11s ease-in-out infinite",
-            animationDelay: "2.5s"
+            animationDelay: "2.5s",
           }}
         />
         <Image
@@ -233,12 +223,12 @@ export default function HomePage() {
           width={70}
           height={42}
           className="absolute opacity-30 pixel-perfect"
-          style={{ 
+          style={{
             imageRendering: "pixelated",
             bottom: "15rem",
             left: "1rem",
             animation: "cloudDrift 13s ease-in-out infinite",
-            animationDelay: "4s"
+            animationDelay: "4s",
           }}
         />
       </div>
@@ -270,32 +260,33 @@ export default function HomePage() {
 
         {/* Game Brief Section */}
         <div className="bg-white-10 rounded-lg p-6 mb-6 backdrop-blur-sm">
-          <h2 className="text-xl font-semibold mb-4 text-center">🎮 How to Play</h2>
+          <h2 className="text-xl font-semibold mb-4 text-center">
+            🎮 How to Play
+          </h2>
           <p className="text-sm opacity-90 text-center mb-4">
-            Pilot your balloon through treacherous skies! Steer clear of airplanes, birds, and UFOs. 
-            Collect shields for protection and fuel to keep flying. Survive as long as possible to achieve the highest altitude and earn SKYC tokens!
+            Pilot your balloon through treacherous skies! Steer clear of
+            airplanes, birds, and UFOs. Collect shields for protection and fuel
+            to keep flying. Survive as long as possible to achieve the highest
+            altitude and earn SKYC tokens!
           </p>
         </div>
 
-        {/* Wallet Connection Section */}
+        {/* Wallet Connection Section - Buttons moved to top-right navbar */}
         {!isAuthenticated ? (
           <div className="bg-white-10 rounded-lg p-6 mb-6 backdrop-blur-sm text-center">
-            <h2 className="text-xl font-semibold mb-4">
-              Connect Your Wallet
-            </h2>
+            <h2 className="text-xl font-semibold mb-4">Connect Your Wallet</h2>
             <p className="text-sm opacity-90 mb-4">
-              Connect your wallet to save progress, earn SKYC tokens, and compete on leaderboards!
+              Connect your wallet to save progress, earn SKYC tokens, and
+              compete on leaderboards!
             </p>
-            <WalletConnection />
+            {/* WalletConnection buttons moved to top-right navbar */}
           </div>
         ) : (
           <div className="bg-white-10 rounded-lg p-4 mb-6 backdrop-blur-sm">
             <h2 className="text-xl font-semibold mb-2">Player Profile</h2>
             <div className="flex items-center space-x-3 mb-2">
               <div>
-                <p className="text-sm font-medium">
-                  {user?.displayName}
-                </p>
+                <p className="text-sm font-medium">{user?.displayName}</p>
                 <p className="text-xs opacity-75 text-green-400">
                   {walletAddress}
                 </p>
@@ -309,11 +300,11 @@ export default function HomePage() {
               <span className="text-yellow-300">
                 🪙 SKYC: {gameStats.totalTokens}
               </span>
-              <span className="text-green-300 text-xs">✅ Wallet Connected</span>
+              <span className="text-green-300 text-xs">
+                ✅ Wallet Connected
+              </span>
             </div>
-            <div className="mt-3">
-              <WalletConnection />
-            </div>
+            {/* WalletConnection buttons moved to top-right navbar */}
           </div>
         )}
 

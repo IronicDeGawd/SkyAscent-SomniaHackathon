@@ -5,6 +5,7 @@ import { useApp } from "./providers";
 import Link from "next/link";
 import Image from "next/image";
 import { blockchainManager } from "../utils/blockchain";
+import { WalletConnection } from "../components/WalletConnection";
 
 export default function HomePage() {
   const {
@@ -14,7 +15,6 @@ export default function HomePage() {
     signIn,
     playerStats,
     walletAddress,
-    connectWallet,
   } = useApp();
   const [gameStats, setGameStats] = useState({
     totalGames: 0,
@@ -321,17 +321,10 @@ export default function HomePage() {
                 <span className="text-green-300 text-xs">✅ Wallet</span>
               )}
             </div>
-            {!walletAddress && isAuthenticated && (
-              <button
-                onClick={connectWallet}
-                className="w-full mt-3 pixel-button mobile-touch-friendly text-sm px-4 py-2 text-white"
-                style={{
-                  backgroundColor: "#059669",
-                  borderColor: "#10b981",
-                }}
-              >
-                🔗 Connect Wallet
-              </button>
+            {isAuthenticated && (
+              <div className="mt-3">
+                <WalletConnection />
+              </div>
             )}
           </div>
         )}

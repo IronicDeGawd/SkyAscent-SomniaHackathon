@@ -66,6 +66,12 @@ class GameScene extends Phaser.Scene {
   private leftKey?: Phaser.Input.Keyboard.Key;
   private rightKey?: Phaser.Input.Keyboard.Key;
 
+  // UI Control buttons
+  private leftButton!: Phaser.GameObjects.Sprite;
+  private rightButton!: Phaser.GameObjects.Sprite;
+  private leftButtonPressed = false;
+  private rightButtonPressed = false;
+
   constructor(callbacks: React.MutableRefObject<PhaserGameProps>) {
     super({ key: "GameScene" });
     this.gameCallbacks = callbacks;
@@ -86,6 +92,8 @@ class GameScene extends Phaser.Scene {
     this.load.image("shield", "/shield.png");
     this.load.image("cloud1", "/cloud1.png");
     this.load.image("cloud2", "/cloud2.png");
+    this.load.image("left_arrow", "/left_arrow.png");
+    this.load.image("right_arrow", "/right_arrow.png");
 
     this.load.image("background", "/bg_extend.webp");
   }
@@ -134,6 +142,18 @@ class GameScene extends Phaser.Scene {
     graphics.fillStyle(0xffffff, 0.8);
     graphics.fillEllipse(40, 20, 80, 40);
     graphics.generateTexture("cloud_fallback", 80, 40);
+    graphics.clear();
+
+    // Left arrow fallback (blue triangle pointing left)
+    graphics.fillStyle(0x0088ff, 1);
+    graphics.fillTriangle(10, 30, 50, 10, 50, 50);
+    graphics.generateTexture("left_arrow_fallback", 60, 60);
+    graphics.clear();
+
+    // Right arrow fallback (blue triangle pointing right)
+    graphics.fillStyle(0x0088ff, 1);
+    graphics.fillTriangle(50, 30, 10, 10, 10, 50);
+    graphics.generateTexture("right_arrow_fallback", 60, 60);
 
     graphics.destroy();
   }
@@ -169,6 +189,9 @@ class GameScene extends Phaser.Scene {
 
     // Set up collisions
     this.setupCollisions();
+
+    // Create control buttons
+    this.createControlButtons();
 
     // Create countdown UI
     this.createCountdownUI();
@@ -283,7 +306,7 @@ class GameScene extends Phaser.Scene {
   }
 
   setupOptimizedControls() {
-    // Optimized touch controls with better responsiveness
+    // Keep swipe controls as backup, but make them less sensitive
     this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
       if (this.isGameOver || !this.isGameStarted) return;
 
@@ -295,10 +318,10 @@ class GameScene extends Phaser.Scene {
       if (!this.isDragging || this.isGameOver || !this.isGameStarted) return;
 
       const deltaX = pointer.x - this.touchStartX;
-      if (Math.abs(deltaX) > 10) {
-        // Minimum threshold for movement
+      // Increased threshold to prevent accidental swipes while using buttons
+      if (Math.abs(deltaX) > 30) {
         this.handleContinuousMovement(deltaX);
-        this.touchStartX = pointer.x; // Reset for continuous movement
+        this.touchStartX = pointer.x;
       }
     });
 
@@ -344,15 +367,110 @@ class GameScene extends Phaser.Scene {
     }
   }
 
+  createControlButtons() {
+    // Calculate button positioning based on screen size
+    const buttonSize = Math.min(this.cameras.main.width * 0.12, 80); // 12% of width or max 80px
+    const bottomMargin = this.cameras.main.height * 0.15; // 15% from bottom
+    const sideMargin = this.cameras.main.width * 0.08; // 8% from sides
+
+    // Create left arrow button with fallback
+    const leftArrowTexture = this.textures.exists("left_arrow") 
+      ? "left_arrow" 
+      : "left_arrow_fallback";
+    this.leftButton = this.add.sprite(
+      sideMargin + buttonSize / 2,
+      this.cameras.main.height - bottomMargin,
+      leftArrowTexture
+    );
+    this.leftButton.setScale(buttonSize / this.leftButton.width);
+    this.leftButton.setScrollFactor(0); // Fixed to camera
+    this.leftButton.setDepth(200); // Above all game elements
+    this.leftButton.setInteractive();
+    this.leftButton.setAlpha(0.8); // Slightly transparent
+
+    // Create right arrow button with fallback
+    const rightArrowTexture = this.textures.exists("right_arrow") 
+      ? "right_arrow" 
+      : "right_arrow_fallback";
+    this.rightButton = this.add.sprite(
+      this.cameras.main.width - sideMargin - buttonSize / 2,
+      this.cameras.main.height - bottomMargin,
+      rightArrowTexture
+    );
+    this.rightButton.setScale(buttonSize / this.rightButton.width);
+    this.rightButton.setScrollFactor(0); // Fixed to camera
+    this.rightButton.setDepth(200); // Above all game elements
+    this.rightButton.setInteractive();
+    this.rightButton.setAlpha(0.8); // Slightly transparent
+
+    // Add button interactions
+    this.setupButtonInteractions();
+  }
+
+  setupButtonInteractions() {
+    // Left button interactions
+    this.leftButton.on("pointerdown", () => {
+      if (!this.isGameOver && this.isGameStarted) {
+        this.leftButtonPressed = true;
+        this.handleSwipe("left"); // Initial movement
+        this.leftButton.setAlpha(1.0); // Full opacity when pressed
+        this.leftButton.setScale(this.leftButton.scale * 0.95); // Slight scale down
+      }
+    });
+
+    this.leftButton.on("pointerup", () => {
+      this.leftButtonPressed = false;
+      this.leftButton.setAlpha(0.8);
+      this.leftButton.setScale(this.leftButton.scale / 0.95); // Reset scale
+    });
+
+    this.leftButton.on("pointerout", () => {
+      this.leftButtonPressed = false;
+      this.leftButton.setAlpha(0.8);
+      this.leftButton.setScale(this.leftButton.scale / 0.95); // Reset scale
+    });
+
+    // Right button interactions
+    this.rightButton.on("pointerdown", () => {
+      if (!this.isGameOver && this.isGameStarted) {
+        this.rightButtonPressed = true;
+        this.handleSwipe("right"); // Initial movement
+        this.rightButton.setAlpha(1.0); // Full opacity when pressed
+        this.rightButton.setScale(this.rightButton.scale * 0.95); // Slight scale down
+      }
+    });
+
+    this.rightButton.on("pointerup", () => {
+      this.rightButtonPressed = false;
+      this.rightButton.setAlpha(0.8);
+      this.rightButton.setScale(this.rightButton.scale / 0.95); // Reset scale
+    });
+
+    this.rightButton.on("pointerout", () => {
+      this.rightButtonPressed = false;
+      this.rightButton.setAlpha(0.8);
+      this.rightButton.setScale(this.rightButton.scale / 0.95); // Reset scale
+    });
+
+    // Show/hide buttons based on game state
+    this.updateButtonVisibility();
+  }
+
+  updateButtonVisibility() {
+    const visible = this.isGameStarted && !this.isGameOver && !this.countdownActive;
+    this.leftButton.setVisible(visible);
+    this.rightButton.setVisible(visible);
+  }
+
   handleKeyboardInput() {
     // Only process keyboard input if game is active
     if (this.isGameOver || !this.isGameStarted || this.fuel <= 0) return;
 
-    // Check for continuous key presses (holding down keys)
-    const leftPressed = this.aKey?.isDown || this.leftKey?.isDown;
-    const rightPressed = this.dKey?.isDown || this.rightKey?.isDown;
+    // Check for continuous key presses (holding down keys) or button presses
+    const leftPressed = this.aKey?.isDown || this.leftKey?.isDown || this.leftButtonPressed;
+    const rightPressed = this.dKey?.isDown || this.rightKey?.isDown || this.rightButtonPressed;
 
-    // Apply continuous movement when keys are held down
+    // Apply continuous movement when keys/buttons are held down
     if (leftPressed && !rightPressed) {
       // Smooth continuous movement to the left
       this.handleContinuousMovement(-80); // Negative for left movement
@@ -895,11 +1013,20 @@ class GameScene extends Phaser.Scene {
       });
     }
 
+    // Calculate responsive font size for score popup
+    const scaleFactor = Math.min(
+      this.cameras.main.width / 720,
+      this.cameras.main.height / 1280
+    );
+    const scorePopupFontSize = Math.max(32, 40 * scaleFactor); // Responsive score popup font
+
     // Score popup
     const scoreText = this.add.text(sprite.x, sprite.y, "+100", {
-      fontSize: "24px",
+      fontSize: `${scorePopupFontSize}px`,
       color: "#ffff00",
-      fontFamily: "Arial",
+      fontFamily: 'var(--font-pixelify), "Pixelify Sans", monospace',
+      stroke: "#000000",
+      strokeThickness: Math.max(2, 3 * scaleFactor),
     });
     scoreText.setOrigin(0.5);
 
@@ -1073,6 +1200,9 @@ class GameScene extends Phaser.Scene {
     this.isGameOver = true;
     this.physics.pause();
 
+    // Hide control buttons
+    this.updateButtonVisibility();
+
     // Clean up countdown timer if still running
     if (this.countdownTimer) {
       console.log(
@@ -1097,17 +1227,24 @@ class GameScene extends Phaser.Scene {
     this.cameras.main.shake(500, 0.03);
     this.cameras.main.fade(1000, 0, 0, 0);
 
+    // Calculate responsive font size for death message
+    const scaleFactor = Math.min(
+      this.cameras.main.width / 720,
+      this.cameras.main.height / 1280
+    );
+    const deathMessageFontSize = Math.max(42, 56 * scaleFactor); // Responsive death message font
+
     // Show game end reason
     const reasonText = this.add.text(
       this.cameras.main.centerX,
       this.cameras.main.centerY - 100,
       this.gameEndReason,
       {
-        fontSize: "32px",
+        fontSize: `${deathMessageFontSize}px`,
         fontFamily: 'var(--font-pixelify), "Pixelify Sans", monospace',
         color: "#ff4444",
         stroke: "#000000",
-        strokeThickness: 3,
+        strokeThickness: Math.max(3, 4 * scaleFactor), // Responsive stroke
         align: "center",
       }
     );
@@ -1153,7 +1290,9 @@ class GameScene extends Phaser.Scene {
       this.cameras.main.width / 720,
       this.cameras.main.height / 1280
     );
-    const responsiveFontSize = Math.max(80, 128 * scaleFactor); // Ensure minimum 80px, scale with screen size
+    // Increased minimum and base size for better visibility
+    const responsiveFontSize = Math.max(120, 180 * scaleFactor); // Increased minimum from 80px to 120px, base from 128 to 180
+    const instructionFontSize = Math.max(28, 36 * scaleFactor); // Responsive instruction text
 
     // Countdown text
     this.countdownText = this.add.text(
@@ -1165,7 +1304,7 @@ class GameScene extends Phaser.Scene {
         fontFamily: 'var(--font-pixelify), "Pixelify Sans", monospace',
         color: "#ffffff",
         stroke: "#4A90E2",
-        strokeThickness: Math.max(2, 3 * scaleFactor), // Scale stroke thickness too
+        strokeThickness: Math.max(3, 5 * scaleFactor), // Increased stroke thickness
       }
     );
     this.countdownText.setOrigin(0.5);
@@ -1176,14 +1315,14 @@ class GameScene extends Phaser.Scene {
     this.instructionText = this.add.text(
       this.cameras.main.centerX,
       this.cameras.main.centerY + 100,
-      "Swipe to move\nCollect fuel to survive!",
+      "Use arrow buttons to move\nCollect fuel to survive!",
       {
-        fontSize: "24px",
+        fontSize: `${instructionFontSize}px`,
         fontFamily: 'var(--font-pixelify), "Pixelify Sans", monospace',
         color: "#ffffff",
         align: "center",
         stroke: "#000000",
-        strokeThickness: 1,
+        strokeThickness: Math.max(2, 3 * scaleFactor), // Responsive stroke thickness
       }
     );
     this.instructionText.setOrigin(0.5);
@@ -1313,6 +1452,9 @@ class GameScene extends Phaser.Scene {
     this.isGameStarted = true;
     this.countdownActive = false;
 
+    // Show control buttons
+    this.updateButtonVisibility();
+
     // Start balloon ascending
     const balloonBody = this.balloon.body as Phaser.Physics.Arcade.Body;
     this.currentAscendSpeed = this.baseAscendSpeed;
@@ -1385,7 +1527,7 @@ export default function PhaserGame(props: PhaserGameProps) {
         default: "arcade",
         arcade: {
           gravity: { x: 0, y: 0 },
-          debug: true,
+          debug: false,
         },
       },
       scene: new GameScene(callbacksRef),

@@ -1,4 +1,5 @@
 import { ethers } from 'ethers'
+import { sdk } from '@farcaster/miniapp-sdk'
 
 // Somnia Network Configuration
 export const SOMNIA_CONFIG = {
@@ -56,17 +57,19 @@ export class BlockchainManager {
 
   async connectWallet(): Promise<string | null> {
     try {
-      if (!window.ethereum) {
-        throw new Error('No wallet found')
+      // Use Farcaster's EIP-1193 provider instead of window.ethereum
+      const ethereumProvider = await sdk.wallet.getEthereumProvider()
+      if (!ethereumProvider) {
+        throw new Error('Farcaster wallet provider not available')
       }
 
-      this.provider = new ethers.BrowserProvider(window.ethereum)
+      this.provider = new ethers.BrowserProvider(ethereumProvider)
       
       // Request account access
-      await window.ethereum.request({ method: 'eth_requestAccounts' })
+      await ethereumProvider.request({ method: 'eth_requestAccounts' })
       
       // Switch to Somnia network if needed
-      await this.switchToSomnia()
+      await this.switchToSomniaWithProvider(ethereumProvider)
       
       this.signer = await this.provider.getSigner()
       const address = await this.signer.getAddress()
@@ -87,19 +90,19 @@ export class BlockchainManager {
     }
   }
 
-  async switchToSomnia(): Promise<void> {
-    if (!window.ethereum) return
+  async switchToSomniaWithProvider(provider: any): Promise<void> {
+    if (!provider) return
 
     try {
       // Try to switch to Somnia network
-      await window.ethereum.request({
+      await provider.request({
         method: 'wallet_switchEthereumChain',
         params: [{ chainId: `0x${SOMNIA_CONFIG.chainId.toString(16)}` }]
       })
     } catch (switchError: any) {
       // If network doesn't exist, add it
       if (switchError.code === 4902) {
-        await window.ethereum.request({
+        await provider.request({
           method: 'wallet_addEthereumChain',
           params: [{
             chainId: `0x${SOMNIA_CONFIG.chainId.toString(16)}`,
@@ -117,6 +120,12 @@ export class BlockchainManager {
         throw switchError
       }
     }
+  }
+
+  // Legacy method for backward compatibility
+  async switchToSomnia(): Promise<void> {
+    if (!window.ethereum) return
+    await this.switchToSomniaWithProvider(window.ethereum)
   }
 
   async submitScore(score: number, altitude: number, gameTime: number): Promise<string> {

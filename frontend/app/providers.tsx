@@ -3,6 +3,9 @@
 import { createContext, useContext, ReactNode, useEffect, useState } from 'react'
 import { sdk } from '@farcaster/miniapp-sdk'
 import { blockchainManager, type PlayerStats } from '../utils/blockchain'
+import { WagmiProvider } from 'wagmi'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { wagmiConfig } from '../utils/wagmi'
 
 interface User {
   fid: number
@@ -24,6 +27,7 @@ interface AppContextType {
   signIn: () => Promise<void>
   signOut: () => void
   refreshPlayerStats: () => Promise<void>
+  setWalletAddress: (address: string | null) => void
 }
 
 const AppContext = createContext<AppContextType>({
@@ -36,8 +40,12 @@ const AppContext = createContext<AppContextType>({
   connectWallet: async () => {},
   signIn: async () => {},
   signOut: () => {},
-  refreshPlayerStats: async () => {}
+  refreshPlayerStats: async () => {},
+  setWalletAddress: () => {}
 })
+
+// Create a client for react-query
+const queryClient = new QueryClient()
 
 export function Providers({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
@@ -189,13 +197,18 @@ export function Providers({ children }: { children: ReactNode }) {
     connectWallet,
     signIn,
     signOut,
-    refreshPlayerStats
+    refreshPlayerStats,
+    setWalletAddress
   }
 
   return (
-    <AppContext.Provider value={value}>
-      {children}
-    </AppContext.Provider>
+    <WagmiProvider config={wagmiConfig}>
+      <QueryClientProvider client={queryClient}>
+        <AppContext.Provider value={value}>
+          {children}
+        </AppContext.Provider>
+      </QueryClientProvider>
+    </WagmiProvider>
   )
 }
 

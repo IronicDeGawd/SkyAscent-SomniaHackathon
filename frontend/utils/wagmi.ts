@@ -35,9 +35,7 @@ export const wagmiConfig = createConfig({
     injected({
       shimDisconnect: true,
     }),
-    metaMask({
-      shimDisconnect: true,
-    }),
+    metaMask(),
     miniAppConnector()
   ],
 })

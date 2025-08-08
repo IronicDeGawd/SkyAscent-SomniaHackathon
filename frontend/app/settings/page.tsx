@@ -79,21 +79,13 @@ export default function SettingsPage() {
               <h2 className="text-xl font-semibold mb-4">Player Info</h2>
               <div className="space-y-2">
                 <div className="flex justify-between">
-                  <span>Farcaster ID:</span>
-                  <span className="text-yellow-300">{user.fid}</span>
+                  <span>Display Name:</span>
+                  <span className="text-yellow-300">{user.displayName}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span>Username:</span>
-                  <span className="text-yellow-300">@{user.username}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Wallet:</span>
+                  <span>Wallet Address:</span>
                   <span className="text-yellow-300 text-sm font-mono">
-                    {user.custody
-                      ? `${user.custody.slice(0, 6)}...${user.custody.slice(
-                          -4
-                        )}`
-                      : "Not connected"}
+                    {user.address}
                   </span>
                 </div>
               </div>

@@ -1,11 +1,18 @@
 {
-  "version": "1",
-  "name": "Sky Ascent",
-  "iconUrl": "https://sky-ascent-somnia-hackathon.vercel.app/logo.png",
-  "homeUrl": "https://sky-ascent-somnia-hackathon.vercel.app",
-  "imageUrl": "https://sky-ascent-somnia-hackathon.vercel.app/logo.png",
-  "buttonTitle": "🎈 Play Now",
-  "splashImageUrl": "https://sky-ascent-somnia-hackathon.vercel.app/logo.png",
-  "splashBackgroundColor": "#4A90E2",
-  "description": "Navigate your balloon through obstacles, collect powerups, and compete on blockchain leaderboards"
+  "accountAssociation": {
+    "header": "eyJmaWQiOjExMDQyMjksInR5cGUiOiJjdXN0b2R5Iiwia2V5IjoiMHgyMjczNWY2YWJBY2YyQzRDMTgyOWJjYzI3RTU4N0EyN2E3YzU2YjVjIn0",
+    "payload": "eyJkb21haW4iOiJza3ktYXNjZW50LXNvbW5pYS1oYWNrYXRob24udmVyY2VsLmFwcCJ9",
+    "signature": "MHhkYjVhYjVlMDlmNjg3OTM5NzBjY2VmMGMzODNlZDE2N2MyNjdmNDY4YWU0ZmU3MDAwNzBhNWE3YWIwNmEwODhiNTgxODhiY2ExYzYyMmVlMzVhOWRiN2IxZWQ4ZGYyOWMyMzI0YzY5NmNhOWY3MDFjNTYxMjBjNzYwOWIzYTNiYTFj"
+  },
+  "frame": {
+    "version": "1",
+    "name": "Example Frame",
+    "iconUrl": "https://sky-ascent-somnia-hackathon.vercel.app/icon.png",
+    "homeUrl": "https://sky-ascent-somnia-hackathon.vercel.app",
+    "imageUrl": "https://sky-ascent-somnia-hackathon.vercel.app/image.png",
+    "buttonTitle": "Check this out",
+    "splashImageUrl": "https://sky-ascent-somnia-hackathon.vercel.app/splash.png",
+    "splashBackgroundColor": "#eeccff",
+    "webhookUrl": "https://sky-ascent-somnia-hackathon.vercel.app/api/webhook"
+  }
 }

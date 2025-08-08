@@ -5,11 +5,7 @@ const nextConfig: NextConfig = {
   compiler: {
     removeConsole: process.env.NODE_ENV === "production",
   },
-  // Disable all development indicators and overlays
-  devIndicators: {
-    buildActivity: false,
-    buildActivityPosition: 'bottom-right',
-  },
+  // Production optimizations
   
   // Suppress hydration warnings in development
   onDemandEntries: {

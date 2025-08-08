@@ -1,11 +1,11 @@
 {
   "version": "1",
   "name": "Sky Ascent",
-  "iconUrl": "https://skyascent.game/logo.png",
-  "homeUrl": "https://skyascent.game",
-  "imageUrl": "https://skyascent.game/logo.png",
+  "iconUrl": "https://your-vercel-url.vercel.app/logo.png",
+  "homeUrl": "https://your-vercel-url.vercel.app",
+  "imageUrl": "https://your-vercel-url.vercel.app/logo.png",
   "buttonTitle": "🎈 Play Now",
-  "splashImageUrl": "https://skyascent.game/logo.png",
+  "splashImageUrl": "https://your-vercel-url.vercel.app/logo.png",
   "splashBackgroundColor": "#4A90E2",
   "description": "Navigate your balloon through obstacles, collect powerups, and compete on blockchain leaderboards"
 }

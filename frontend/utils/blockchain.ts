@@ -218,6 +218,24 @@ export class BlockchainManager {
     }
   }
 
+  // Get current connected account address
+  async getCurrentAccount(): Promise<string | null> {
+    if (!this.signer) return null
+    
+    try {
+      const address = await this.signer.getAddress()
+      return address
+    } catch (error) {
+      console.error('Failed to get current account:', error)
+      return null
+    }
+  }
+
+  // Check if wallet is connected
+  isWalletConnected(): boolean {
+    return this.signer !== null
+  }
+
   // Utility function to format addresses
   static formatAddress(address: string): string {
     if (!address) return ''

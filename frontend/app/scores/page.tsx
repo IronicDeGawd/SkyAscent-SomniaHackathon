@@ -3,21 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useApp } from '../providers'
 import Link from 'next/link'
-import { blockchainManager } from '../../utils/blockchain'
-
-interface LeaderboardEntry {
-  player: string
-  score: number
-  altitude: number
-  timestamp: number
-}
-
-interface GameSession {
-  score: number
-  altitude: number
-  gameTime: number
-  timestamp: number
-}
+import { blockchainManager, type LeaderboardEntry, type GameSession } from '../../utils/blockchain'
 
 export default function ScoresPage() {
   const { user } = useApp()
@@ -36,9 +22,14 @@ export default function ScoresPage() {
         setWeeklyLeaderboard(leaderboard)
 
         // Load player history if user is authenticated and has wallet
-        if (user && blockchainManager.getCurrentAccount()) {
-          const history = await blockchainManager.getPlayerHistory(blockchainManager.getCurrentAccount(), 20)
-          setPlayerHistory(history)
+        if (user && blockchainManager.isWalletConnected()) {
+          const currentAccount = await blockchainManager.getCurrentAccount()
+          if (currentAccount) {
+            const history = await blockchainManager.getPlayerHistory(currentAccount, 20)
+            setPlayerHistory(history)
+          } else {
+            setPlayerHistory([])
+          }
         } else {
           // Clear history for unauthenticated users
           setPlayerHistory([])

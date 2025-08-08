@@ -88,22 +88,9 @@ export function Providers({ children }: { children: ReactNode }) {
     }
   }, [walletAddress])
 
-  // Separate effect to refresh player stats and initialize blockchain manager when wallet address changes
+  // Sync authentication state with wallet address
   useEffect(() => {
     if (walletAddress) {
-      // Initialize blockchainManager when wagmi wallet is connected
-      const initializeBlockchainManager = async () => {
-        try {
-          // Check if blockchainManager is already initialized
-          if (!blockchainManager.isInitialized) {
-            await blockchainManager.connectWallet()
-          }
-        } catch (error) {
-          console.error('Failed to initialize blockchain manager:', error)
-        }
-      }
-
-      initializeBlockchainManager()
       refreshPlayerStats()
       
       // Set authentication state when wallet is connected via wagmi

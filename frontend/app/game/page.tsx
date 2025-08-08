@@ -5,7 +5,8 @@ import { useRouter } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import { useApp } from '../providers'
 import { sdk } from '@farcaster/miniapp-sdk'
-import { blockchainManager } from '../../utils/blockchain'
+import { useWriteContract, useWaitForTransactionReceipt } from 'wagmi'
+import { CONTRACT_ADDRESSES, GAME_CONTRACT_ABI } from '../../utils/blockchain'
 
 // Dynamically import Phaser to avoid SSR issues
 const PhaserGame = dynamic(() => import('../../components/PhaserGame'), { 
@@ -65,18 +66,38 @@ export default function GamePage() {
   const [currentAltitude, setCurrentAltitude] = useState(0)
   const [fuel, setFuel] = useState(100)
   const [gameTime, setGameTime] = useState(0)
-  const [isSubmittingScore, setIsSubmittingScore] = useState(false)
   const [submissionError, setSubmissionError] = useState<string | null>(null)
   const [tokensEarned, setTokensEarned] = useState(0)
   const [gameEndReason, setGameEndReason] = useState<string>('')
+
+  // Wagmi hooks for contract interaction
+  const { writeContract, data: hash, error, isPending } = useWriteContract()
+  const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({
+    hash,
+  })
+
+  // Handle transaction status changes
+  useEffect(() => {
+    if (error) {
+      console.error('Transaction error:', error)
+      setSubmissionError('Failed to submit score to blockchain. Playing in offline mode.')
+    }
+  }, [error])
+
+  useEffect(() => {
+    if (isConfirmed) {
+      console.log('Score submitted successfully:', hash)
+      // Clear any previous error
+      setSubmissionError(null)
+    }
+  }, [isConfirmed, hash])
 
   const handleGameEnd = async (finalScore: number, finalAltitude: number, finalTime: number, reason?: string) => {
     setGameState('ended')
     setGameEndReason(reason || 'Unknown cause')
     
     // Submit score to blockchain if user is authenticated
-    if (isAuthenticated && user) {
-      setIsSubmittingScore(true)
+    if (isAuthenticated && user && CONTRACT_ADDRESSES.GAME_CONTRACT) {
       setSubmissionError(null)
       
       try {
@@ -84,17 +105,17 @@ export default function GamePage() {
         const expectedTokens = Math.floor(finalScore / 100) + Math.floor(finalAltitude / 500)
         setTokensEarned(expectedTokens)
         
-        const txHash = await blockchainManager.submitScore(finalScore, finalAltitude, finalTime)
-        console.log('Score submitted successfully:', txHash)
+        // Submit score using wagmi
+        writeContract({
+          address: CONTRACT_ADDRESSES.GAME_CONTRACT as `0x${string}`,
+          abi: GAME_CONTRACT_ABI,
+          functionName: 'submitScore',
+          args: [BigInt(finalScore), BigInt(finalAltitude), BigInt(finalTime)]
+        })
         
-        // Show success feedback
-        setTimeout(() => {
-          setIsSubmittingScore(false)
-        }, 2000)
       } catch (error) {
         console.error('Failed to submit score:', error)
         setSubmissionError('Failed to submit score to blockchain. Playing in offline mode.')
-        setIsSubmittingScore(false)
       }
     }
     
@@ -118,7 +139,6 @@ export default function GamePage() {
     setCurrentAltitude(0)
     setFuel(100)
     setGameTime(0)
-    setIsSubmittingScore(false)
     setSubmissionError(null)
     setTokensEarned(0)
     setGameEndReason('')
@@ -176,9 +196,17 @@ export default function GamePage() {
             )}
           </div>
           
-          {isSubmittingScore && (
+          {(isPending || isConfirming) && (
             <div className="bg-blue-500/20 rounded-lg p-4 mb-4">
-              <p className="text-blue-300 text-sm">📤 Submitting score to blockchain...</p>
+              <p className="text-blue-300 text-sm">
+                {isPending ? '📤 Submitting score to blockchain...' : '⏳ Confirming transaction...'}
+              </p>
+            </div>
+          )}
+
+          {isConfirmed && !submissionError && (
+            <div className="bg-green-500/20 rounded-lg p-4 mb-4">
+              <p className="text-green-300 text-sm">✅ Score submitted successfully!</p>
             </div>
           )}
           

@@ -77,13 +77,23 @@ export function Providers({ children }: { children: ReactNode }) {
     initFarcaster()
   }, [])
   
+  const refreshPlayerStats = useCallback(async () => {
+    if (!walletAddress) return
+    
+    try {
+      const stats = await blockchainManager.getPlayerStats(walletAddress)
+      setPlayerStats(stats)
+    } catch (error) {
+      console.error('Failed to refresh player stats:', error)
+    }
+  }, [walletAddress])
+
   // Separate effect to refresh player stats when wallet address changes
   useEffect(() => {
     if (walletAddress) {
       refreshPlayerStats()
     }
   }, [walletAddress, refreshPlayerStats])
-
 
   const connectWallet = useCallback(async () => {
     try {
@@ -108,17 +118,6 @@ export function Providers({ children }: { children: ReactNode }) {
       if (isLoading) setIsLoading(false)
     }
   }, [farcasterUser, isLoading])
-
-  const refreshPlayerStats = useCallback(async () => {
-    if (!walletAddress) return
-    
-    try {
-      const stats = await blockchainManager.getPlayerStats(walletAddress)
-      setPlayerStats(stats)
-    } catch (error) {
-      console.error('Failed to refresh player stats:', error)
-    }
-  }, [walletAddress])
 
   const signOut = () => {
     setUser(null)

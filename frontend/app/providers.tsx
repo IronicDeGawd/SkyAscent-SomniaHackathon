@@ -1,19 +1,14 @@
 'use client'
 
-import { createContext, useContext, ReactNode, useEffect, useState } from 'react'
-import { sdk } from '@farcaster/miniapp-sdk'
+import { createContext, useContext, ReactNode, useState } from 'react'
 import { blockchainManager, type PlayerStats } from '../utils/blockchain'
 import { WagmiProvider } from 'wagmi'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { wagmiConfig } from '../utils/wagmi'
 
 interface User {
-  fid: number
-  username: string
-  displayName?: string
-  pfpUrl?: string
-  custody?: string
-  verifications?: string[]
+  address: string
+  displayName: string
 }
 
 interface AppContextType {
@@ -24,7 +19,6 @@ interface AppContextType {
   playerStats: PlayerStats | null
   walletAddress: string | null
   connectWallet: () => Promise<void>
-  signIn: () => Promise<void>
   signOut: () => void
   refreshPlayerStats: () => Promise<void>
   setWalletAddress: (address: string | null) => void
@@ -38,7 +32,6 @@ const AppContext = createContext<AppContextType>({
   playerStats: null,
   walletAddress: null,
   connectWallet: async () => {},
-  signIn: async () => {},
   signOut: () => {},
   refreshPlayerStats: async () => {},
   setWalletAddress: () => {}
@@ -49,70 +42,12 @@ const queryClient = new QueryClient()
 
 export function Providers({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
+  const [isLoading, setIsLoading] = useState(false)
   const [gameContract, setGameContract] = useState(null)
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [playerStats, setPlayerStats] = useState<PlayerStats | null>(null)
   const [walletAddress, setWalletAddress] = useState<string | null>(null)
-  const [isFarcasterAvailable, setIsFarcasterAvailable] = useState(true)
 
-  const signIn = async () => {
-    try {
-      setIsLoading(true)
-      
-      // Check if we're in a Farcaster environment
-      if (typeof window === 'undefined' || !window.parent || window.parent === window) {
-        // Not in Farcaster iframe, enable fallback mode
-        console.log('Not in Farcaster environment, using fallback authentication')
-        setUser({
-          fid: 12345,
-          username: 'demo_user',
-          displayName: 'Demo User',
-          pfpUrl: '/balloon_default.png'
-        })
-        setIsAuthenticated(true)
-        setIsFarcasterAvailable(false)
-        return
-      }
-
-      // Correct Farcaster SDK authentication flow
-      // First, get user context
-      const context = await sdk.context
-      if (context?.user) {
-        setUser({
-          fid: context.user.fid,
-          username: context.user.username || `user${context.user.fid}`,
-          displayName: context.user.displayName,
-          pfpUrl: context.user.pfpUrl
-        })
-        setIsAuthenticated(true)
-        
-        // Auto-connect wallet after authentication
-        try {
-          await connectWallet()
-        } catch (error) {
-          console.log('Wallet connection optional:', error)
-        }
-      } else {
-        // If no user context, trigger authentication
-        // Note: In production, this should redirect to Farcaster auth
-        throw new Error('Authentication required - must be accessed from Farcaster app')
-      }
-    } catch (error) {
-      console.error('Sign in failed:', error)
-      // Fallback to demo mode if Farcaster fails
-      setUser({
-        fid: 12345,
-        username: 'demo_user',
-        displayName: 'Demo User (Fallback)',
-        pfpUrl: '/balloon_default.png'
-      })
-      setIsAuthenticated(true)
-      setIsFarcasterAvailable(false)
-    } finally {
-      setIsLoading(false)
-    }
-  }
 
   const connectWallet = async () => {
     try {
@@ -120,6 +55,12 @@ export function Providers({ children }: { children: ReactNode }) {
       const address = await blockchainManager.connectWallet()
       setWalletAddress(address)
       if (address) {
+        // Set user based on wallet address
+        setUser({
+          address: address,
+          displayName: `${address.slice(0, 6)}...${address.slice(-4)}`
+        })
+        setIsAuthenticated(true)
         await refreshPlayerStats()
       }
     } catch (error) {
@@ -147,45 +88,6 @@ export function Providers({ children }: { children: ReactNode }) {
     setWalletAddress(null)
   }
 
-  useEffect(() => {
-    const initApp = async () => {
-      try {
-        // Always call ready() first to signal app has loaded
-        await sdk.actions.ready()
-        
-        // Check if we're in a Farcaster environment
-        if (typeof window === 'undefined' || !window.parent || window.parent === window) {
-          setIsLoading(false)
-          setIsFarcasterAvailable(false)
-          return
-        }
-
-        // Check if user is already authenticated via context
-        try {
-          const context = await sdk.context
-          if (context?.user?.fid) {
-            setUser({
-              fid: context.user.fid,
-              username: context.user.username || `user${context.user.fid}`,
-              displayName: context.user.displayName,
-              pfpUrl: context.user.pfpUrl
-            })
-            setIsAuthenticated(true)
-          }
-        } catch (error) {
-          console.log('No existing authentication found')
-        }
-
-        setIsLoading(false)
-      } catch (error) {
-        console.error('Failed to initialize app:', error)
-        setIsLoading(false)
-        setIsFarcasterAvailable(false)
-      }
-    }
-
-    initApp()
-  }, [])
 
   const value = {
     user,
@@ -195,7 +97,6 @@ export function Providers({ children }: { children: ReactNode }) {
     playerStats,
     walletAddress,
     connectWallet,
-    signIn,
     signOut,
     refreshPlayerStats,
     setWalletAddress

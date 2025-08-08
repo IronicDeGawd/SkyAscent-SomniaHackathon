@@ -12,7 +12,6 @@ export default function HomePage() {
     user,
     isLoading,
     isAuthenticated,
-    signIn,
     playerStats,
     walletAddress,
   } = useApp();
@@ -269,44 +268,37 @@ export default function HomePage() {
           <p className="text-xl opacity-90">Navigate through the clouds!</p>
         </div>
 
-        {/* Authentication Section */}
+        {/* Game Brief Section */}
+        <div className="bg-white-10 rounded-lg p-6 mb-6 backdrop-blur-sm">
+          <h2 className="text-xl font-semibold mb-4 text-center">🎮 How to Play</h2>
+          <p className="text-sm opacity-90 text-center mb-4">
+            Pilot your balloon through treacherous skies! Steer clear of airplanes, birds, and UFOs. 
+            Collect shields for protection and fuel to keep flying. Survive as long as possible to achieve the highest altitude and earn SKYC tokens!
+          </p>
+        </div>
+
+        {/* Wallet Connection Section */}
         {!isAuthenticated ? (
           <div className="bg-white-10 rounded-lg p-6 mb-6 backdrop-blur-sm text-center">
             <h2 className="text-xl font-semibold mb-4">
-              Welcome to Sky Ascent!
+              Connect Your Wallet
             </h2>
             <p className="text-sm opacity-90 mb-4">
-              Sign in with Farcaster to save your progress, earn SKYC tokens,
-              and compete on leaderboards!
+              Connect your wallet to save progress, earn SKYC tokens, and compete on leaderboards!
             </p>
-            <button
-              onClick={signIn}
-              disabled={isLoading}
-              className="pixel-button mobile-touch-friendly px-6 py-3 text-white"
-              style={{
-                backgroundColor: "#5b21b6",
-                borderColor: "#7c3aed",
-              }}
-            >
-              {isLoading ? "Connecting..." : "🔗 Sign in with Farcaster"}
-            </button>
+            <WalletConnection />
           </div>
         ) : (
           <div className="bg-white-10 rounded-lg p-4 mb-6 backdrop-blur-sm">
             <h2 className="text-xl font-semibold mb-2">Player Profile</h2>
             <div className="flex items-center space-x-3 mb-2">
-              {user?.pfpUrl && (
-                <img
-                  src={user.pfpUrl}
-                  alt="Profile"
-                  className="w-8 h-8 rounded-full"
-                />
-              )}
               <div>
                 <p className="text-sm font-medium">
-                  {user?.displayName || user?.username}
+                  {user?.displayName}
                 </p>
-                <p className="text-xs opacity-75">FID: {user?.fid}</p>
+                <p className="text-xs opacity-75 text-green-400">
+                  {walletAddress}
+                </p>
               </div>
             </div>
             <div className="flex justify-between mt-3 text-sm">
@@ -317,15 +309,11 @@ export default function HomePage() {
               <span className="text-yellow-300">
                 🪙 SKYC: {gameStats.totalTokens}
               </span>
-              {walletAddress && (
-                <span className="text-green-300 text-xs">✅ Wallet</span>
-              )}
+              <span className="text-green-300 text-xs">✅ Wallet Connected</span>
             </div>
-            {isAuthenticated && (
-              <div className="mt-3">
-                <WalletConnection />
-              </div>
-            )}
+            <div className="mt-3">
+              <WalletConnection />
+            </div>
           </div>
         )}
 

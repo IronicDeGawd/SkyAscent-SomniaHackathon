@@ -5,6 +5,8 @@ import { useApp } from "./providers";
 import Link from "next/link";
 import Image from "next/image";
 import { blockchainManager } from "../utils/blockchain";
+import { WalletTopRight } from "../components/WalletTopRight";
+import { FaucetButton } from "../components/FaucetButton";
 
 export default function HomePage() {
   const { user, isLoading, isAuthenticated, playerStats, walletAddress } =
@@ -65,7 +67,8 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen text-white relative overflow-hidden bg-sky-extend">
-      {/* Wallet Navbar is now in layout.tsx - Top Right */}
+      {/* Wallet Connect/Disconnect - Top Right */}
+      <WalletTopRight />
 
       {/* Flowing cloud decorations distributed across full screen */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden">
@@ -300,9 +303,6 @@ export default function HomePage() {
               <span className="text-yellow-300">
                 🪙 SKYC: {gameStats.totalTokens}
               </span>
-              <span className="text-green-300 text-xs">
-                ✅ Wallet Connected
-              </span>
             </div>
             {/* WalletConnection buttons moved to top-right navbar */}
           </div>
@@ -345,6 +345,9 @@ export default function HomePage() {
               ⚙️ Settings
             </button>
           </Link>
+
+          {/* Get STT Tokens Button */}
+          <FaucetButton />
         </div>
 
         {/* Weekly Leaderboard Preview */}

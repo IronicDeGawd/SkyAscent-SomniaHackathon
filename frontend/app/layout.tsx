@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { Pixelify_Sans } from "next/font/google";
 import "./globals.css";
 import { Providers } from "./providers";
-import { WalletNavbar } from "../components/WalletNavbar";
 
 const pixelifySans = Pixelify_Sans({
   subsets: ["latin"],
@@ -13,7 +12,7 @@ const pixelifySans = Pixelify_Sans({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://your-vercel-url.vercel.app"),
+  metadataBase: new URL("https://sky-ascent-somnia-hackathon.vercel.app/"),
   title: "Sky Ascent - Farcaster Mini App",
   description:
     "Navigate your balloon through obstacles, collect powerups, and compete on blockchain leaderboards",
@@ -55,10 +54,7 @@ export default function RootLayout({
         />
       </head>
       <body className={`${pixelifySans.variable} font-pixelify`}>
-        <Providers>
-          <WalletNavbar />
-          {children}
-        </Providers>
+        <Providers>{children}</Providers>
       </body>
     </html>
   );

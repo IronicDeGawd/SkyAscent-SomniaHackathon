@@ -22,8 +22,11 @@ export function FaucetButton() {
       }
     }
 
-    // Open official Somnia testnet faucet in new tab
-    window.open("https://testnet.somnia.network/", "_blank");
+    // Open official Google Cloud Somnia testnet faucet in new tab
+    window.open(
+      "https://cloud.google.com/application/web3/faucet/somnia/shannon",
+      "_blank"
+    );
 
     // Reset loading state after a brief moment
     setTimeout(() => {
@@ -36,7 +39,7 @@ export function FaucetButton() {
       <button
         onClick={handleFaucetRequest}
         disabled={isLoading}
-        className="pixel-button px-6 py-3 text-sm w-full"
+        className="pixel-button px-6 py-3 text-xs w-full"
         style={{
           backgroundColor: "#06b6d4",
           borderColor: "#22d3ee",

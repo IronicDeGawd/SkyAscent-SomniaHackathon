@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useContext, ReactNode, useState, useEffect } from 'react'
+import { createContext, useContext, ReactNode, useState, useEffect, useCallback } from 'react'
 import { blockchainManager, type PlayerStats } from '../utils/blockchain'
 import { WagmiProvider } from 'wagmi'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -70,16 +70,22 @@ export function Providers({ children }: { children: ReactNode }) {
         // This is fine - we'll fall back to wallet-only mode
       }
       
-      // Always try to connect wallet regardless of Farcaster auth
-      await connectWallet()
+      // Don't auto-connect wallet here to prevent conflicts with wagmi
       setIsLoading(false)
     }
 
     initFarcaster()
   }, [])
+  
+  // Separate effect to refresh player stats when wallet address changes
+  useEffect(() => {
+    if (walletAddress) {
+      refreshPlayerStats()
+    }
+  }, [walletAddress, refreshPlayerStats])
 
 
-  const connectWallet = async () => {
+  const connectWallet = useCallback(async () => {
     try {
       if (!isLoading) setIsLoading(true)
       const address = await blockchainManager.connectWallet()
@@ -94,16 +100,16 @@ export function Providers({ children }: { children: ReactNode }) {
           username: farcasterUser?.username
         })
         setIsAuthenticated(true)
-        await refreshPlayerStats()
+        // Don't call refreshPlayerStats here to prevent loops
       }
     } catch (error) {
       console.error('Failed to connect wallet:', error)
     } finally {
       if (isLoading) setIsLoading(false)
     }
-  }
+  }, [farcasterUser, isLoading])
 
-  const refreshPlayerStats = async () => {
+  const refreshPlayerStats = useCallback(async () => {
     if (!walletAddress) return
     
     try {
@@ -112,7 +118,7 @@ export function Providers({ children }: { children: ReactNode }) {
     } catch (error) {
       console.error('Failed to refresh player stats:', error)
     }
-  }
+  }, [walletAddress])
 
   const signOut = () => {
     setUser(null)

@@ -40,6 +40,9 @@ class GameScene extends Phaser.Scene {
   private nextDifficultyScore = 1000;
   private gameCallbacks: React.MutableRefObject<PhaserGameProps>;
   private gameEndReason: string = "";
+  
+  // Environmental zones based on altitude
+  private currentEnvironmentalZone: 'city' | 'sky' | 'stratosphere' | 'space' = 'city';
 
   // Countdown and game start logic
   private isGameStarted = false;
@@ -53,8 +56,24 @@ class GameScene extends Phaser.Scene {
 
   // Performance optimizations
   private objectPool: Map<string, Phaser.GameObjects.Sprite[]> = new Map();
-  private baseAscendSpeed = -100; // Base upward speed
-  private currentAscendSpeed = 0;
+  
+  // New physics-based balloon system
+  private buoyancyForce = 80; // Base lift force when fuel available
+  private balloonMass = 1; // Balloon mass for physics calculations
+  private airResistance = 0.98; // Air resistance factor (0.98 = 2% resistance)
+  private terminalVelocity = 150; // Maximum fall speed
+  private liftEfficiency = 1.0; // How efficiently fuel converts to lift (1.0 = 100%)
+  
+  // NEW: Enhanced spawning system
+  private currentWavePattern: string = 'none';
+  private waveStartTime = 0;
+  private waveDuration = 0;
+  private playerMovementHistory: number[] = [];
+  private comboCount = 0;
+  private lastComboTime = 0;
+  private dangerZoneActive = false;
+  private thermalUpdraftActive = false;
+  private windCurrentDirection = 0; // -1 left, 0 none, 1 right
 
   // Touch control optimization
   private touchStartX = 0;
@@ -273,10 +292,23 @@ class GameScene extends Phaser.Scene {
   }
 
   initializeObjectPools() {
-    // Pre-create objects for pooling
+    // Pre-create objects for pooling with initial capacity
     this.objectPool.set("obstacles", []);
     this.objectPool.set("powerups", []);
     this.objectPool.set("clouds", []);
+    
+    // Pre-create initial pool objects for better performance
+    for (let i = 0; i < 10; i++) {
+      // Pre-create obstacle sprites
+      const obstacleSprite = this.physics.add.sprite(-1000, -1000, 'bird_fallback');
+      obstacleSprite.setActive(false).setVisible(false);
+      this.objectPool.get("obstacles")!.push(obstacleSprite);
+      
+      // Pre-create powerup sprites  
+      const powerupSprite = this.physics.add.sprite(-1000, -1000, 'fuel_fallback');
+      powerupSprite.setActive(false).setVisible(false);
+      this.objectPool.get("powerups")!.push(powerupSprite);
+    }
   }
 
   getPooledObject(
@@ -487,16 +519,10 @@ class GameScene extends Phaser.Scene {
     const moveForce = Phaser.Math.Clamp(deltaX * 2, -150, 150);
     balloonBody.setVelocityX(moveForce);
 
-    // Consume less fuel for continuous movement
-    const fuelBefore = this.fuel;
-    this.fuel = Math.max(0, this.fuel - 0.2); // Reduced from 0.5 to 0.2
-    if (fuelBefore !== this.fuel) {
-      console.log(
-        `CONTINUOUS FUEL CONSUMPTION: ${fuelBefore.toFixed(
-          1
-        )} -> ${this.fuel.toFixed(1)} (consumed 0.2)`
-      );
-    }
+    // NEW: Fuel consumption based on movement intensity
+    const movementIntensity = Math.abs(deltaX) / 100; // 0-1 scale
+    const fuelConsumption = movementIntensity * 0.15; // Max 0.15 fuel per movement
+    this.fuel = Math.max(0, this.fuel - fuelConsumption);
   }
 
   handleSwipe(direction: "left" | "right") {
@@ -511,14 +537,8 @@ class GameScene extends Phaser.Scene {
       balloonBody.setVelocityX(moveForce);
     }
 
-    // Consume fuel (reduced from 0.8 to 0.4)
-    const fuelBefore = this.fuel;
-    this.fuel = Math.max(0, this.fuel - 0.4);
-    console.log(
-      `SWIPE FUEL CONSUMPTION: ${fuelBefore.toFixed(1)} -> ${this.fuel.toFixed(
-        1
-      )} (consumed 0.4)`
-    );
+    // NEW: Moderate fuel consumption for discrete movements
+    this.fuel = Math.max(0, this.fuel - 0.3);
 
     // Visual feedback with tilt
     this.tweens.add({
@@ -546,17 +566,12 @@ class GameScene extends Phaser.Scene {
 
     // Handle continuous keyboard input for desktop
     this.handleKeyboardInput();
+    
+    // NEW: Track player movement for adaptive spawning
+    this.trackPlayerMovement();
 
-    // Update balloon ascending speed based on fuel - keep constant speed
-    if (this.fuel > 0) {
-      const balloonBody = this.balloon.body as Phaser.Physics.Arcade.Body;
-      this.currentAscendSpeed = this.baseAscendSpeed; // Keep constant ascend speed
-      balloonBody.setVelocityY(this.currentAscendSpeed);
-    } else {
-      // Fall when out of fuel
-      const balloonBody = this.balloon.body as Phaser.Physics.Arcade.Body;
-      balloonBody.setVelocityY(150);
-    }
+    // NEW: Physics-based balloon movement with proper buoyancy
+    this.updateBalloonPhysics(delta);
 
     // Update altitude
     this.updateAltitude();
@@ -570,26 +585,10 @@ class GameScene extends Phaser.Scene {
     // Update difficulty
     this.updateDifficulty();
 
-    // Consume fuel (1% loss per second)
-    const oldFuel = this.fuel;
-    this.fuel -= (delta / 1000) * 1; // 1 fuel per second
-
-    // Debug fuel consumption
-    if (this.fuel <= 10 && this.fuel > 0) {
-      console.log("LOW FUEL WARNING:", {
-        fuel: this.fuel.toFixed(2),
-        consumed: ((delta / 1000) * 1).toFixed(4),
-        delta,
-        gameTime: this.gameTime,
-      });
-    }
-
+    // NEW: No passive fuel consumption - fuel only consumed during movement
+    // Fuel depletion handled in updateBalloonPhysics() and movement functions
+    
     if (this.fuel <= 0) {
-      console.log("FUEL DEPLETED - triggering game over:", {
-        oldFuel: oldFuel.toFixed(2),
-        consumed: ((delta / 1000) * 1).toFixed(4),
-        gameTime: this.gameTime,
-      });
       this.fuel = 0;
       this.gameEndReason = "Out of fuel!";
       this.gameOver();
@@ -632,8 +631,9 @@ class GameScene extends Phaser.Scene {
   updateBackgroundScroll() {
     // Update TileSprite scrolling for infinite background repetition
     if (this.backgroundTile) {
-      // Calculate scroll speed based on balloon's actual ascending movement
-      const scrollSpeed = Math.abs(this.currentAscendSpeed) * 0.5; // Parallax effect multiplier
+      // NEW: Calculate scroll speed based on balloon's actual velocity
+      const balloonBody = this.balloon.body as Phaser.Physics.Arcade.Body;
+      const scrollSpeed = Math.abs(balloonBody.velocity.y) * 0.3; // Parallax effect multiplier
 
       // Update tile position for continuous scrolling effect
       // Positive values scroll the texture downward, creating upward movement illusion
@@ -670,19 +670,68 @@ class GameScene extends Phaser.Scene {
     }
   }
 
-  spawnManager(time: number) {
-    // Dynamic spawn rates based on difficulty
-    const obstacleSpawnRate = Math.max(800, 2000 - this.difficultyLevel * 150);
-    const powerupSpawnRate = 3500 + this.difficultyLevel * 300;
+  // NEW: Physics-based balloon movement system
+  updateBalloonPhysics(delta: number) {
+    const balloonBody = this.balloon.body as Phaser.Physics.Arcade.Body;
+    const deltaSeconds = delta / 1000;
+    
+    // Get current velocity
+    let currentVelocityY = balloonBody.velocity.y;
+    
+    if (this.fuel > 0) {
+      // Calculate buoyancy force based on fuel level
+      const fuelRatio = this.fuel / 100; // 0-1 range
+      const effectiveBuoyancy = this.buoyancyForce * fuelRatio * this.liftEfficiency;
+      
+      // Apply buoyancy force (negative Y = upward)
+      const buoyancyVelocity = -effectiveBuoyancy;
+      
+      // Combine with current velocity and apply air resistance
+      const targetVelocity = (currentVelocityY + buoyancyVelocity) * this.airResistance;
+      
+      // Smooth transition to target velocity
+      const smoothedVelocity = Phaser.Math.Linear(currentVelocityY, targetVelocity, deltaSeconds * 2);
+      balloonBody.setVelocityY(smoothedVelocity);
+      
+    } else {
+      // No fuel: balloon falls with gravity, but with air resistance
+      const gravity = 100; // Gravity force when no fuel
+      const fallVelocity = currentVelocityY + (gravity * deltaSeconds);
+      
+      // Apply air resistance and terminal velocity limit
+      const resistedVelocity = Math.min(fallVelocity * this.airResistance, this.terminalVelocity);
+      balloonBody.setVelocityY(resistedVelocity);
+    }
+  }
 
-    if (time - this.lastObstacleTime > obstacleSpawnRate) {
-      this.spawnObstacle();
+  spawnManager(time: number) {
+    // Update environmental zone based on altitude
+    this.updateEnvironmentalZone();
+    
+    // NEW: Intelligent wave-based spawning system
+    this.manageWavePatterns(time);
+    
+    // Adaptive spawning rates based on multiple factors
+    const baseObstacleRate = this.getAdaptiveSpawnRate('obstacles');
+    const basePowerupRate = this.getAdaptiveSpawnRate('powerups');
+
+    if (time - this.lastObstacleTime > baseObstacleRate) {
+      if (this.currentWavePattern !== 'none') {
+        this.spawnWaveObstacle();
+      } else {
+        this.spawnObstacle();
+      }
       this.lastObstacleTime = time;
     }
 
-    if (time - this.lastPowerupTime > powerupSpawnRate) {
+    if (time - this.lastPowerupTime > basePowerupRate) {
       this.spawnPowerup();
       this.lastPowerupTime = time;
+    }
+    
+    // Spawn special environmental elements
+    if (Math.random() < 0.003) { // 0.3% chance per frame
+      this.spawnEnvironmentalElement(time);
     }
   }
 
@@ -695,39 +744,7 @@ class GameScene extends Phaser.Scene {
         const balloonBody = this.balloon.body as Phaser.Physics.Arcade.Body;
         const obstacleBody = obstacleSprite.body as Phaser.Physics.Arcade.Body;
 
-        // Debug collision information
-        console.log("=== COLLISION DETECTED ===");
-        console.log("Balloon Position:", {
-          x: this.balloon.x,
-          y: this.balloon.y,
-        });
-        console.log("Balloon Scale:", this.balloon.scale);
-        console.log("Balloon Hitbox:", {
-          x: balloonBody.x,
-          y: balloonBody.y,
-          width: balloonBody.width,
-          height: balloonBody.height,
-        });
-        console.log("Obstacle Position:", {
-          x: obstacleSprite.x,
-          y: obstacleSprite.y,
-        });
-        console.log("Obstacle Scale:", obstacleSprite.scale);
-        console.log("Obstacle Type:", obstacleSprite.getData("type"));
-        console.log("Obstacle Hitbox:", {
-          x: obstacleBody.x,
-          y: obstacleBody.y,
-          width: obstacleBody.width,
-          height: obstacleBody.height,
-        });
-        console.log(
-          "Distance between centers:",
-          Math.sqrt(
-            Math.pow(this.balloon.x - obstacleSprite.x, 2) +
-              Math.pow(this.balloon.y - obstacleSprite.y, 2)
-          )
-        );
-        console.log("========================");
+        // Collision detected - removed debug logging for performance
 
         if (!this.shieldActive) {
           this.gameEndReason = `Hit by ${obstacleSprite.getData("type")}!`;
@@ -791,7 +808,15 @@ class GameScene extends Phaser.Scene {
       textureKey = `${obstacleType}_fallback`;
     }
 
-    const obstacle = this.physics.add.sprite(x, y, textureKey);
+    // Try to get pooled object first, create new if none available
+    let obstacle = this.getPooledObject("obstacles", textureKey);
+    if (!obstacle) {
+      obstacle = this.physics.add.sprite(x, y, textureKey);
+    } else {
+      obstacle.setPosition(x, y);
+      obstacle.setTexture(textureKey);
+    }
+    
     obstacle.setData("direction", spawnDirection);
     obstacle.setData("type", obstacleType);
 
@@ -886,15 +911,23 @@ class GameScene extends Phaser.Scene {
     const x = Phaser.Math.Between(margin, this.cameras.main.width - margin);
     const y = this.balloon.y - 400 - Phaser.Math.Between(0, 150);
 
-    const powerupTypes = ["fuel", "shield"];
-    const weights = [0.7, 0.3]; // Fuel more common
-    const powerupType = this.weightedRandom(powerupTypes, weights);
+    // NEW: Enhanced power-up types with environmental consideration
+    const powerupTypes = this.getEnvironmentalPowerups();
+    const powerupType = powerupTypes[Math.floor(Math.random() * powerupTypes.length)];
 
     const textureKey = this.textures.exists(powerupType)
       ? powerupType
       : `${powerupType}_fallback`;
 
-    const powerup = this.physics.add.sprite(x, y, textureKey);
+    // Try to get pooled object first, create new if none available
+    let powerup = this.getPooledObject("powerups", textureKey);
+    if (!powerup) {
+      powerup = this.physics.add.sprite(x, y, textureKey);
+    } else {
+      powerup.setPosition(x, y);
+      powerup.setTexture(textureKey);
+    }
+    
     powerup.setScale(0.2); // Match debug scene scale
     powerup.setData("type", powerupType);
 
@@ -935,28 +968,45 @@ class GameScene extends Phaser.Scene {
   collectPowerup(powerup: Phaser.Physics.Arcade.Sprite) {
     const powerupType = powerup.getData("type");
 
+    // NEW: Enhanced power-up effects with combo system
+    this.handleComboSystem();
+
     switch (powerupType) {
       case "fuel":
         this.fuel = Math.min(100, this.fuel + 30);
-        this.score += 100;
+        this.score += 100 * this.getComboMultiplier();
 
-        // Boost effect
-        const balloonBody = this.balloon.body as Phaser.Physics.Arcade.Body;
-        balloonBody.setVelocityY(this.currentAscendSpeed * 1.5);
-        this.time.delayedCall(500, () => {
-          balloonBody.setVelocityY(this.currentAscendSpeed);
+        // NEW: Fuel boost effect - temporary lift efficiency increase
+        this.liftEfficiency = 2.0; // Double efficiency for 3 seconds
+        this.time.delayedCall(3000, () => {
+          this.liftEfficiency = 1.0; // Reset to normal
         });
         break;
 
       case "shield":
         this.activateShield();
-        this.score += 200;
+        this.score += 200 * this.getComboMultiplier();
+        break;
+        
+      case "thermal":
+        this.activateThermalUpdraft();
+        this.score += 150 * this.getComboMultiplier();
+        break;
+        
+      case "wind":
+        this.activateWindCurrent();
+        this.score += 120 * this.getComboMultiplier();
+        break;
+        
+      case "turbo":
+        this.activateTurboBoost();
+        this.score += 300 * this.getComboMultiplier();
         break;
     }
 
     // Collection effect
     this.createCollectionEffect(powerup);
-    powerup.destroy();
+    this.returnToPool(powerup, "powerups");
 
     this.gameCallbacks.current.onScoreUpdate(this.score);
     this.gameCallbacks.current.onFuelUpdate(Math.floor(this.fuel));
@@ -1158,44 +1208,53 @@ class GameScene extends Phaser.Scene {
     const cleanupY = this.balloon.y + 400;
     const cleanupTop = this.balloon.y - 1000;
 
-    // Clean up obstacles
+    // Clean up obstacles - use object pooling instead of destroying
+    const obstaclesToRemove: Phaser.Physics.Arcade.Sprite[] = [];
     this.obstacles.children.entries.forEach((obj) => {
       const sprite = obj as Phaser.Physics.Arcade.Sprite;
       if (sprite.y > cleanupY || sprite.y < cleanupTop) {
-        sprite.destroy();
+        obstaclesToRemove.push(sprite);
       }
     });
+    
+    obstaclesToRemove.forEach(sprite => {
+      this.obstacles.remove(sprite);
+      this.returnToPool(sprite, "obstacles");
+    });
 
-    // Clean up powerups
+    // Clean up powerups - use object pooling instead of destroying
+    const powerupsToRemove: Phaser.Physics.Arcade.Sprite[] = [];
     this.powerups.children.entries.forEach((obj) => {
       const sprite = obj as Phaser.Physics.Arcade.Sprite;
       if (sprite.y > cleanupY || sprite.y < cleanupTop) {
-        sprite.destroy();
+        powerupsToRemove.push(sprite);
       }
     });
+    
+    powerupsToRemove.forEach(sprite => {
+      this.powerups.remove(sprite);
+      this.returnToPool(sprite, "powerups");
+    });
 
-    // Clean up clouds
+    // Clean up clouds - limit total count instead of destroying all
+    const cloudsToRemove: Phaser.GameObjects.Sprite[] = [];
     this.clouds.children.entries.forEach((cloud) => {
       const sprite = cloud as Phaser.GameObjects.Sprite;
       if (sprite.y > cleanupY + 200) {
-        sprite.destroy();
+        cloudsToRemove.push(sprite);
       }
+    });
+    
+    // Only remove excess clouds, keep some for performance
+    cloudsToRemove.slice(0, Math.max(0, cloudsToRemove.length - 5)).forEach(sprite => {
+      sprite.destroy();
     });
   }
 
   gameOver() {
     if (this.isGameOver) return;
 
-    // Debug: Log what caused game over
-    console.log("=== GAME OVER TRIGGERED ===");
-    console.log("Fuel level:", this.fuel);
-    console.log("Balloon position:", { x: this.balloon.x, y: this.balloon.y });
-    console.log("Shield active:", this.shieldActive);
-    console.log("Game time:", this.gameTime);
-    console.log("Score:", this.score);
-    console.log("Stack trace:");
-    console.trace();
-    console.log("========================");
+    // Game over triggered - removed debug logging for performance
 
     this.isGameOver = true;
     this.physics.pause();
@@ -1205,13 +1264,8 @@ class GameScene extends Phaser.Scene {
 
     // Clean up countdown timer if still running
     if (this.countdownTimer) {
-      console.log(
-        "Game over - destroying countdown timer:",
-        this.countdownTimer
-      );
       this.countdownTimer.destroy();
       this.countdownTimer = null as any;
-      console.log("Game over - countdown timer destroyed");
     }
 
     // Stop balloon
@@ -1357,25 +1411,14 @@ class GameScene extends Phaser.Scene {
       loop: true,
     });
 
-    console.log("Countdown timer started:", this.countdownTimer);
+    // Countdown timer started - removed debug logging
   }
 
   updateCountdown() {
     // Prevent execution if countdown already completed
     if (this.countdownCompleted || this.countdownValue <= 0) {
-      console.log(
-        "UpdateCountdown blocked - completed:",
-        this.countdownCompleted,
-        "value:",
-        this.countdownValue
-      );
       return;
     }
-
-    console.log(
-      "UpdateCountdown executing - value before decrement:",
-      this.countdownValue
-    );
     this.countdownValue--;
 
     if (this.countdownValue > 0) {
@@ -1402,10 +1445,8 @@ class GameScene extends Phaser.Scene {
     } else if (this.countdownValue <= 0) {
       // CRITICAL: Stop the timer immediately to prevent infinite loop
       if (this.countdownTimer) {
-        console.log("Destroying countdown timer:", this.countdownTimer);
         this.countdownTimer.destroy();
         this.countdownTimer = null as any; // Clear reference
-        console.log("Countdown timer destroyed and nullified");
       }
 
       // Ensure countdown is marked as complete
@@ -1455,10 +1496,9 @@ class GameScene extends Phaser.Scene {
     // Show control buttons
     this.updateButtonVisibility();
 
-    // Start balloon ascending
+    // NEW: Initialize balloon physics system
     const balloonBody = this.balloon.body as Phaser.Physics.Arcade.Body;
-    this.currentAscendSpeed = this.baseAscendSpeed;
-    balloonBody.setVelocityY(this.currentAscendSpeed);
+    balloonBody.setVelocityY(-this.buoyancyForce); // Start with initial upward velocity
 
     // Reset timers
     this.gameStartTime = this.time.now;
@@ -1466,6 +1506,573 @@ class GameScene extends Phaser.Scene {
     this.lastPowerupTime = this.time.now;
 
     // Game is now ready - balloon maintains stable scale for smooth gameplay
+  }
+
+  // NEW: Environmental zone management
+  updateEnvironmentalZone() {
+    const altitude = this.altitude;
+    let newZone: 'city' | 'sky' | 'stratosphere' | 'space';
+    
+    if (altitude < 1000) {
+      newZone = 'city';
+    } else if (altitude < 3000) {
+      newZone = 'sky';
+    } else if (altitude < 6000) {
+      newZone = 'stratosphere';
+    } else {
+      newZone = 'space';
+    }
+    
+    if (newZone !== this.currentEnvironmentalZone) {
+      this.currentEnvironmentalZone = newZone;
+      this.onEnvironmentalZoneChange(newZone);
+    }
+  }
+  
+  onEnvironmentalZoneChange(newZone: string) {
+    // Visual feedback for zone transitions
+    this.cameras.main.flash(1000, 100, 150, 255, false);
+    
+    // Create zone transition particles
+    for (let i = 0; i < 20; i++) {
+      const particle = this.add.circle(
+        this.balloon.x + Phaser.Math.Between(-100, 100),
+        this.balloon.y + Phaser.Math.Between(-50, 50),
+        Phaser.Math.Between(2, 6),
+        0x00ffff
+      );
+      
+      this.tweens.add({
+        targets: particle,
+        alpha: 0,
+        scale: 0,
+        duration: 1500,
+        ease: "Power2",
+        onComplete: () => particle.destroy(),
+      });
+    }
+  }
+
+  // NEW: Intelligent wave pattern management
+  manageWavePatterns(time: number) {
+    // Check if current wave has ended
+    if (this.currentWavePattern !== 'none' && time > this.waveStartTime + this.waveDuration) {
+      this.currentWavePattern = 'none';
+    }
+    
+    // Start new wave pattern if none active
+    if (this.currentWavePattern === 'none' && Math.random() < 0.002) { // 0.2% chance per frame
+      this.startNewWavePattern(time);
+    }
+  }
+  
+  startNewWavePattern(time: number) {
+    const wavePatterns = ['vformation', 'wall', 'spiral', 'scatter', 'funnel'];
+    const weights = [0.25, 0.20, 0.15, 0.25, 0.15]; // Different probabilities for each pattern
+    
+    this.currentWavePattern = this.weightedRandom(wavePatterns, weights);
+    this.waveStartTime = time;
+    this.waveDuration = Phaser.Math.Between(3000, 7000); // 3-7 seconds
+  }
+
+  // NEW: Adaptive spawn rate calculation
+  getAdaptiveSpawnRate(type: 'obstacles' | 'powerups'): number {
+    let baseRate: number;
+    let difficultyMultiplier: number;
+    
+    if (type === 'obstacles') {
+      baseRate = 2000;
+      difficultyMultiplier = this.difficultyLevel * 120;
+      
+      // Adjust based on player movement patterns
+      const avgMovement = this.getAverageMovement();
+      if (avgMovement > 0.7) { // Very active player
+        baseRate *= 0.8; // Spawn more frequently
+      } else if (avgMovement < 0.3) { // Passive player
+        baseRate *= 1.2; // Spawn less frequently
+      }
+      
+    } else { // powerups
+      baseRate = 4000;
+      difficultyMultiplier = this.difficultyLevel * 200;
+      
+      // More powerups in higher difficulty zones
+      if (this.currentEnvironmentalZone === 'stratosphere' || this.currentEnvironmentalZone === 'space') {
+        baseRate *= 0.7; // More frequent powerups at high altitude
+      }
+    }
+    
+    return Math.max(600, baseRate - difficultyMultiplier);
+  }
+  
+  getAverageMovement(): number {
+    if (this.playerMovementHistory.length === 0) return 0;
+    const sum = this.playerMovementHistory.reduce((a, b) => a + b, 0);
+    return sum / this.playerMovementHistory.length;
+  }
+
+  // NEW: Wave-based obstacle spawning
+  spawnWaveObstacle() {
+    switch (this.currentWavePattern) {
+      case 'vformation':
+        this.spawnVFormation();
+        break;
+      case 'wall':
+        this.spawnWallPattern();
+        break;
+      case 'spiral':
+        this.spawnSpiralPattern();
+        break;
+      case 'scatter':
+        this.spawnScatterPattern();
+        break;
+      case 'funnel':
+        this.spawnFunnelPattern();
+        break;
+      default:
+        this.spawnObstacle();
+    }
+  }
+
+  spawnVFormation() {
+    const centerX = this.cameras.main.centerX;
+    const y = this.balloon.y - 600;
+    const spacing = 80;
+    
+    // Create V formation with 5 obstacles
+    for (let i = 0; i < 5; i++) {
+      const xOffset = (i - 2) * spacing;
+      const yOffset = Math.abs(i - 2) * 40; // V shape
+      this.spawnObstacleAt(centerX + xOffset, y - yOffset);
+    }
+  }
+  
+  spawnWallPattern() {
+    const y = this.balloon.y - 600;
+    const gapPosition = Phaser.Math.Between(1, 4); // Gap position in wall
+    const spacing = this.cameras.main.width / 6;
+    
+    // Create wall with gap
+    for (let i = 0; i < 6; i++) {
+      if (i !== gapPosition) {
+        this.spawnObstacleAt(spacing * i + spacing/2, y);
+      }
+    }
+  }
+  
+  spawnSpiralPattern() {
+    const centerX = this.cameras.main.centerX;
+    const centerY = this.balloon.y - 500;
+    const radius = 120;
+    
+    // Create spiral with 8 obstacles
+    for (let i = 0; i < 8; i++) {
+      const angle = (i / 8) * Math.PI * 2;
+      const x = centerX + Math.cos(angle) * radius;
+      const y = centerY + Math.sin(angle) * radius * 0.5; // Flatten spiral
+      this.spawnObstacleAt(x, y);
+    }
+  }
+  
+  spawnScatterPattern() {
+    const count = Phaser.Math.Between(3, 6);
+    const minY = this.balloon.y - 800;
+    const maxY = this.balloon.y - 400;
+    
+    for (let i = 0; i < count; i++) {
+      const x = Phaser.Math.Between(60, this.cameras.main.width - 60);
+      const y = Phaser.Math.Between(minY, maxY);
+      
+      // Ensure not too close to balloon
+      if (Math.abs(x - this.balloon.x) > 100) {
+        this.spawnObstacleAt(x, y);
+      }
+    }
+  }
+  
+  spawnFunnelPattern() {
+    const centerX = this.cameras.main.centerX;
+    const topY = this.balloon.y - 700;
+    const bottomY = this.balloon.y - 400;
+    const topWidth = 200;
+    const bottomWidth = 80;
+    
+    // Create funnel shape with multiple rows
+    for (let row = 0; row < 4; row++) {
+      const y = topY + (bottomY - topY) * (row / 3);
+      const width = topWidth - (topWidth - bottomWidth) * (row / 3);
+      
+      // Left and right sides of funnel
+      this.spawnObstacleAt(centerX - width/2, y);
+      this.spawnObstacleAt(centerX + width/2, y);
+    }
+  }
+  
+  spawnObstacleAt(x: number, y: number) {
+    // Ensure coordinates are within bounds
+    x = Phaser.Math.Clamp(x, 60, this.cameras.main.width - 60);
+    
+    const obstacleTypes = this.getEnvironmentalObstacles();
+    const obstacleType = obstacleTypes[Math.floor(Math.random() * obstacleTypes.length)];
+    
+    // Create obstacle with environmental texture
+    let textureKey = obstacleType;
+    if (!this.textures.exists(textureKey)) {
+      textureKey = `${obstacleType}_fallback`;
+    }
+    
+    let obstacle = this.getPooledObject("obstacles", textureKey);
+    if (!obstacle) {
+      obstacle = this.physics.add.sprite(x, y, textureKey);
+    } else {
+      obstacle.setPosition(x, y);
+      obstacle.setTexture(textureKey);
+    }
+    
+    obstacle.setData("type", obstacleType);
+    obstacle.setData("waveSpawned", true);
+    
+    // Apply obstacle configuration
+    const config = this.getObstacleConfig(obstacleType);
+    obstacle.setScale(config.scale);
+    
+    const obstacleBody = obstacle.body as Phaser.Physics.Arcade.Body;
+    const hitboxWidth = obstacle.width * config.scale * config.hitboxWidth;
+    const hitboxHeight = obstacle.height * config.scale * config.hitboxHeight;
+    obstacleBody.setSize(hitboxWidth, hitboxHeight);
+    
+    this.obstacles.add(obstacle);
+    this.addObstacleMovement(obstacle, obstacleType);
+  }
+  
+  getEnvironmentalObstacles(): string[] {
+    switch (this.currentEnvironmentalZone) {
+      case 'city':
+        return ['bird', 'airplane'];
+      case 'sky':
+        return ['bird', 'airplane', 'ufo'];
+      case 'stratosphere':
+        return ['airplane', 'ufo'];
+      case 'space':
+        return ['ufo'];
+      default:
+        return ['bird', 'airplane', 'ufo'];
+    }
+  }
+  
+  getObstacleConfig(obstacleType: string) {
+    const configs = {
+      bird: { scale: 0.25, hitboxWidth: 0.6, hitboxHeight: 0.8 },
+      airplane: { scale: 0.35, hitboxWidth: 0.7, hitboxHeight: 0.5 },
+      ufo: { scale: 0.4, hitboxWidth: 0.8, hitboxHeight: 0.6 },
+    };
+    return configs[obstacleType as keyof typeof configs] || { scale: 1, hitboxWidth: 0.7, hitboxHeight: 0.7 };
+  }
+
+  // NEW: Environmental power-up types
+  getEnvironmentalPowerups(): string[] {
+    const basePowerups = ['fuel', 'shield'];
+    
+    switch (this.currentEnvironmentalZone) {
+      case 'city':
+        return [...basePowerups, 'wind']; // Wind currents common in city
+      case 'sky':
+        return [...basePowerups, 'thermal', 'wind']; // Thermals and winds
+      case 'stratosphere':
+        return [...basePowerups, 'thermal', 'turbo']; // Rare turbo boost
+      case 'space':
+        return ['fuel', 'turbo']; // Only advanced powerups in space
+      default:
+        return basePowerups;
+    }
+  }
+
+  // NEW: Enhanced power-up effects
+  activateThermalUpdraft() {
+    this.thermalUpdraftActive = true;
+    this.liftEfficiency = 3.0; // Triple efficiency
+    this.buoyancyForce *= 1.5; // Stronger lift
+    
+    // Visual thermal effect
+    for (let i = 0; i < 15; i++) {
+      const particle = this.add.circle(
+        this.balloon.x + Phaser.Math.Between(-50, 50),
+        this.balloon.y + Phaser.Math.Between(0, 100),
+        Phaser.Math.Between(3, 8),
+        0xff6600
+      );
+      
+      this.tweens.add({
+        targets: particle,
+        y: particle.y - 200,
+        alpha: 0,
+        scale: 0.2,
+        duration: 2000,
+        ease: "Power2",
+        onComplete: () => particle.destroy(),
+      });
+    }
+    
+    // Reset after 5 seconds
+    this.time.delayedCall(5000, () => {
+      this.thermalUpdraftActive = false;
+      this.liftEfficiency = 1.0;
+      this.buoyancyForce /= 1.5;
+    });
+  }
+  
+  activateWindCurrent() {
+    this.windCurrentDirection = Math.random() > 0.5 ? 1 : -1; // Random direction
+    
+    // Apply wind force to balloon
+    const balloonBody = this.balloon.body as Phaser.Physics.Arcade.Body;
+    const windForce = this.windCurrentDirection * 60;
+    balloonBody.setVelocityX(balloonBody.velocity.x + windForce);
+    
+    // Visual wind effect
+    for (let i = 0; i < 10; i++) {
+      const particle = this.add.rectangle(
+        this.balloon.x + Phaser.Math.Between(-100, 100),
+        this.balloon.y + Phaser.Math.Between(-50, 50),
+        Phaser.Math.Between(20, 40),
+        2,
+        0x87ceeb
+      );
+      
+      this.tweens.add({
+        targets: particle,
+        x: particle.x + (this.windCurrentDirection * 150),
+        alpha: 0,
+        duration: 1500,
+        ease: "Power2",
+        onComplete: () => particle.destroy(),
+      });
+    }
+    
+    // Reset after 4 seconds
+    this.time.delayedCall(4000, () => {
+      this.windCurrentDirection = 0;
+    });
+  }
+  
+  activateTurboBoost() {
+    // Temporary massive speed boost
+    const balloonBody = this.balloon.body as Phaser.Physics.Arcade.Body;
+    this.liftEfficiency = 4.0; // Quadruple efficiency
+    this.buoyancyForce *= 2; // Double buoyancy
+    
+    // Turbo visual effects
+    this.balloon.setTint(0x00ff00); // Green tint
+    
+    for (let i = 0; i < 20; i++) {
+      const particle = this.add.circle(
+        this.balloon.x + Phaser.Math.Between(-30, 30),
+        this.balloon.y + Phaser.Math.Between(20, 60),
+        Phaser.Math.Between(2, 5),
+        0x00ff00
+      );
+      
+      this.tweens.add({
+        targets: particle,
+        y: particle.y + 150,
+        alpha: 0,
+        scale: 0,
+        duration: 800,
+        ease: "Power2",
+        onComplete: () => particle.destroy(),
+      });
+    }
+    
+    // Camera shake for impact
+    this.cameras.main.shake(200, 0.01);
+    
+    // Reset after 3 seconds
+    this.time.delayedCall(3000, () => {
+      this.liftEfficiency = 1.0;
+      this.buoyancyForce /= 2;
+      this.balloon.clearTint();
+    });
+  }
+
+  // NEW: Combo system
+  handleComboSystem() {
+    const currentTime = this.time.now;
+    
+    if (currentTime - this.lastComboTime < 3000) { // Within 3 seconds
+      this.comboCount++;
+    } else {
+      this.comboCount = 1; // Reset combo
+    }
+    
+    this.lastComboTime = currentTime;
+    
+    // Show combo text
+    if (this.comboCount > 1) {
+      const comboText = this.add.text(
+        this.balloon.x,
+        this.balloon.y - 80,
+        `COMBO x${this.comboCount}!`,
+        {
+          fontSize: '28px',
+          color: '#ffff00',
+          fontFamily: 'var(--font-pixelify), "Pixelify Sans", monospace',
+          stroke: '#000000',
+          strokeThickness: 3,
+        }
+      );
+      comboText.setOrigin(0.5);
+      
+      this.tweens.add({
+        targets: comboText,
+        y: comboText.y - 40,
+        alpha: 0,
+        scale: 1.5,
+        duration: 1500,
+        ease: "Power2",
+        onComplete: () => comboText.destroy(),
+      });
+    }
+  }
+  
+  getComboMultiplier(): number {
+    return Math.min(3, 1 + (this.comboCount - 1) * 0.5); // Max 3x multiplier
+  }
+
+  // NEW: Environmental element spawning
+  spawnEnvironmentalElement(time: number) {
+    const elementTypes = ['dangerZone', 'bonusAltitude'];
+    const elementType = elementTypes[Math.floor(Math.random() * elementTypes.length)];
+    
+    switch (elementType) {
+      case 'dangerZone':
+        this.createDangerZone();
+        break;
+      case 'bonusAltitude':
+        this.createBonusAltitudeZone();
+        break;
+    }
+  }
+  
+  createDangerZone() {
+    if (this.dangerZoneActive) return;
+    
+    this.dangerZoneActive = true;
+    const width = this.cameras.main.width;
+    const height = 150;
+    const x = 0;
+    const y = this.balloon.y - 500;
+    
+    // Create danger zone visual
+    const dangerZone = this.add.rectangle(x, y, width, height, 0xff0000, 0.3);
+    dangerZone.setOrigin(0, 0);
+    
+    // Pulsing effect
+    this.tweens.add({
+      targets: dangerZone,
+      alpha: 0.1,
+      duration: 500,
+      yoyo: true,
+      repeat: -1,
+    });
+    
+    // Spawn extra obstacles in danger zone
+    for (let i = 0; i < 4; i++) {
+      const obstacleX = Phaser.Math.Between(60, width - 60);
+      const obstacleY = y + Phaser.Math.Between(0, height);
+      this.spawnObstacleAt(obstacleX, obstacleY);
+    }
+    
+    // Spawn high-value powerup as reward
+    this.time.delayedCall(1000, () => {
+      const powerupX = Phaser.Math.Between(100, width - 100);
+      const powerupY = y + height / 2;
+      this.spawnPowerupAt(powerupX, powerupY, 'turbo');
+    });
+    
+    // Clean up after 8 seconds
+    this.time.delayedCall(8000, () => {
+      dangerZone.destroy();
+      this.dangerZoneActive = false;
+    });
+  }
+  
+  createBonusAltitudeZone() {
+    const width = this.cameras.main.width;
+    const height = 100;
+    const x = 0;
+    const y = this.balloon.y - 400;
+    
+    // Create bonus zone visual
+    const bonusZone = this.add.rectangle(x, y, width, height, 0x00ff00, 0.2);
+    bonusZone.setOrigin(0, 0);
+    
+    // Gentle glow effect
+    this.tweens.add({
+      targets: bonusZone,
+      alpha: 0.1,
+      duration: 1000,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut',
+    });
+    
+    // Spawn fuel powerups throughout the zone
+    for (let i = 0; i < 3; i++) {
+      const powerupX = Phaser.Math.Between(100, width - 100);
+      const powerupY = y + Phaser.Math.Between(20, height - 20);
+      this.spawnPowerupAt(powerupX, powerupY, 'fuel');
+    }
+    
+    // Clean up after 6 seconds
+    this.time.delayedCall(6000, () => {
+      bonusZone.destroy();
+    });
+  }
+  
+  spawnPowerupAt(x: number, y: number, type: string) {
+    const textureKey = this.textures.exists(type) ? type : `${type}_fallback`;
+    
+    let powerup = this.getPooledObject("powerups", textureKey);
+    if (!powerup) {
+      powerup = this.physics.add.sprite(x, y, textureKey);
+    } else {
+      powerup.setPosition(x, y);
+      powerup.setTexture(textureKey);
+    }
+    
+    powerup.setScale(0.25); // Slightly larger for special powerups
+    powerup.setData("type", type);
+    powerup.setData("special", true);
+    
+    // Enhanced hitbox for easier collection
+    const powerupBody = powerup.body as Phaser.Physics.Arcade.Body;
+    powerupBody.setSize(powerup.width * 0.25 * 3, powerup.height * 0.25 * 3);
+    
+    this.powerups.add(powerup);
+    
+    // Special glow animation
+    this.tweens.add({
+      targets: powerup,
+      alpha: 0.6,
+      scale: 0.3,
+      duration: 800,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut',
+    });
+  }
+
+  // Track player movement for adaptive spawning
+  trackPlayerMovement() {
+    const balloonBody = this.balloon.body as Phaser.Physics.Arcade.Body;
+    const movementIntensity = Math.abs(balloonBody.velocity.x) / 200; // Normalize to 0-1
+    
+    this.playerMovementHistory.push(movementIntensity);
+    
+    // Keep only last 100 samples (about 1.5 seconds at 60fps)
+    if (this.playerMovementHistory.length > 100) {
+      this.playerMovementHistory.shift();
+    }
   }
 
   // Utility function for weighted random selection

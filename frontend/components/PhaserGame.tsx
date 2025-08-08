@@ -58,7 +58,7 @@ class GameScene extends Phaser.Scene {
   private gameStartTime = 0;
 
   // Performance optimizations
-  private objectPool: Map<string, Phaser.GameObjects.Sprite[]> = new Map();
+  private objectPool: Map<string, Phaser.Physics.Arcade.Sprite[]> = new Map();
 
   // New physics-based balloon system
   private buoyancyForce = 80; // Base lift force when fuel available
@@ -448,7 +448,7 @@ class GameScene extends Phaser.Scene {
     return null;
   }
 
-  returnToPool(sprite: Phaser.GameObjects.Sprite, type: string) {
+  returnToPool(sprite: Phaser.Physics.Arcade.Sprite, type: string) {
     sprite.setActive(false).setVisible(false);
     sprite.setPosition(-1000, -1000); // Move off screen
     const pool = this.objectPool.get(type);
@@ -2728,14 +2728,6 @@ class GameScene extends Phaser.Scene {
       alpha: { start: 0.3, end: 0 },
       lifespan: 2000,
       frequency: 200,
-      emitZone: {
-        source: new Phaser.Geom.Rectangle(
-          -50,
-          -50,
-          this.cameras.main.width + 100,
-          100
-        ),
-      },
       active: false,
     });
     windParticles.setScrollFactor(0.3);
@@ -2748,14 +2740,6 @@ class GameScene extends Phaser.Scene {
       alpha: { min: 0.6, max: 1.0 },
       lifespan: Infinity,
       frequency: 100,
-      emitZone: {
-        source: new Phaser.Geom.Rectangle(
-          0,
-          -1000,
-          this.cameras.main.width,
-          2000
-        ),
-      },
       active: false,
       tint: [0xffffff, 0xffffcc, 0xccffff],
     });
@@ -2818,8 +2802,7 @@ class GameScene extends Phaser.Scene {
       emitter.stop();
     });
 
-    // Remove existing weather tints
-    this.cameras.main.clearTint();
+    // Remove existing weather tints (camera tinting not available in this Phaser version)
 
     switch (this.currentWeather) {
       case "clear":
@@ -2836,8 +2819,7 @@ class GameScene extends Phaser.Scene {
         break;
 
       case "stormy":
-        // Dark tint and occasional lightning
-        this.cameras.main.setTint(0x888888);
+        // Dark weather effects and occasional lightning
         this.startLightningEffect();
         // Increase difficulty
         this.gameSpeed *= 1.2;

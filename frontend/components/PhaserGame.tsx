@@ -801,7 +801,7 @@ class GameScene extends Phaser.Scene {
 
   updateAltitude() {
     const newAltitude = Math.floor(
-      Math.abs(this.balloon.y - this.cameras.main.height) / 10
+      Math.abs(this.balloon.y - this.cameras.main.height) / 15
     );
     if (newAltitude > this.altitude) {
       const altitudeGained = newAltitude - this.altitude;
@@ -970,8 +970,8 @@ class GameScene extends Phaser.Scene {
   }
 
   spawnObstacle() {
-    const margin = 60;
-    const safeZoneRadius = 120; // Minimum distance from balloon
+    const margin = 80;
+    const safeZoneRadius = 200; // Increased minimum distance from balloon
     let x: number;
 
     // Ensure obstacle doesn't spawn too close to balloon horizontally
@@ -979,8 +979,10 @@ class GameScene extends Phaser.Scene {
       x = Phaser.Math.Between(margin, this.cameras.main.width - margin);
     } while (Math.abs(x - this.balloon.x) < safeZoneRadius);
 
-    // Increased spawn distance for better reaction time
-    const y = this.balloon.y - 800 - Phaser.Math.Between(0, 300);
+    // Spawn obstacles much further above for better visibility and reaction time
+    const baseSpawnDistance = 1200; // Increased from 800
+    const additionalDistance = Phaser.Math.Between(0, 600); // Increased from 300
+    const y = this.balloon.y - baseSpawnDistance - additionalDistance;
 
     const obstacleTypes = ["bird", "airplane", "ufo"];
     const weights = [0.5, 0.3, 0.2]; // Bird more common, UFO rare
@@ -1048,12 +1050,17 @@ class GameScene extends Phaser.Scene {
 
   addObstacleMovement(obstacle: Phaser.Physics.Arcade.Sprite, type: string) {
     const obstacleBody = obstacle.body as Phaser.Physics.Arcade.Body;
-    const speedMultiplier = 1 + (this.difficultyLevel - 1) * 0.4;
+    // Reduced speed multiplier to prevent obstacles from being too fast at high altitudes
+    const speedMultiplier = Math.min(2.5, 1 + (this.difficultyLevel - 1) * 0.25); // Capped at 2.5x speed
+    
+    // Additional altitude-based speed reduction for very high altitudes
+    const altitudeSpeedReduction = Math.max(0.3, 1 - (this.altitude / 100000)); // Slower at higher altitudes
+    const finalSpeedMultiplier = speedMultiplier * altitudeSpeedReduction;
 
     switch (type) {
       case "bird":
-        // Smooth sine wave movement
-        const birdSpeed = Phaser.Math.Between(-60, 60) * speedMultiplier;
+        // Smooth sine wave movement with reduced speed
+        const birdSpeed = Phaser.Math.Between(-45, 45) * finalSpeedMultiplier; // Reduced from 60
         obstacleBody.setVelocityX(birdSpeed);
         this.tweens.add({
           targets: obstacle,
@@ -1066,8 +1073,8 @@ class GameScene extends Phaser.Scene {
         break;
 
       case "airplane":
-        // Fast horizontal movement
-        const airplaneSpeed = Phaser.Math.Between(-120, 120) * speedMultiplier;
+        // Fast horizontal movement with reduced speed
+        const airplaneSpeed = Phaser.Math.Between(-90, 90) * finalSpeedMultiplier; // Reduced from 120
         obstacleBody.setVelocityX(airplaneSpeed);
         obstacle.setAngle(airplaneSpeed > 0 ? 5 : -5);
         break;

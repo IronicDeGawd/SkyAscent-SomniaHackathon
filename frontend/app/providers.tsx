@@ -92,8 +92,26 @@ export function Providers({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (walletAddress) {
       refreshPlayerStats()
+      // Set authentication state when wallet is connected via wagmi
+      if (!isAuthenticated) {
+        const displayName = farcasterUser?.username || `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}`
+        setUser({
+          address: walletAddress,
+          displayName,
+          fid: farcasterUser?.fid,
+          username: farcasterUser?.username
+        })
+        setIsAuthenticated(true)
+      }
+    } else {
+      // Clear authentication when wallet is disconnected
+      if (isAuthenticated) {
+        setUser(null)
+        setIsAuthenticated(false)
+        setPlayerStats(null)
+      }
     }
-  }, [walletAddress, refreshPlayerStats])
+  }, [walletAddress, refreshPlayerStats, isAuthenticated, farcasterUser])
 
   const connectWallet = useCallback(async () => {
     try {

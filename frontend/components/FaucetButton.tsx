@@ -39,7 +39,7 @@ export function FaucetButton() {
       <button
         onClick={handleFaucetRequest}
         disabled={isLoading}
-        className="pixel-button mobile-touch-friendly px-6 py-3 text-white w-full"
+        className="w-full pixel-button text-xl mobile-ui-large mobile-touch-friendly px-6 py-4 text-white"
         style={{
           backgroundColor: "#06b6d4",
           borderColor: "#22d3ee",

@@ -1,6 +1,7 @@
 import { http, createConfig } from 'wagmi'
 import { defineChain } from 'viem'
 import { farcasterMiniApp as miniAppConnector } from '@farcaster/miniapp-wagmi-connector'
+import { injected, metaMask, walletConnect } from 'wagmi/connectors'
 
 // Define Somnia Network
 export const somniaNetwork = defineChain({
@@ -31,6 +32,12 @@ export const wagmiConfig = createConfig({
     [somniaNetwork.id]: http(),
   },
   connectors: [
+    injected({
+      shimDisconnect: true,
+    }),
+    metaMask({
+      shimDisconnect: true,
+    }),
     miniAppConnector()
   ],
 })

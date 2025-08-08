@@ -23,13 +23,13 @@ export function WalletConnection() {
 
   if (isConnected) {
     return (
-      <div className="flex flex-col space-y-3">
+      <div className="flex flex-col space-y-4">
         <div className="text-sm text-green-400 text-center mb-2">
           ✅ Wallet Connected
         </div>
         <button
           onClick={() => disconnect()}
-          className="pixel-button mobile-touch-friendly px-6 py-3 text-white w-full"
+          className="w-full pixel-button text-xl mobile-ui-large mobile-touch-friendly px-6 py-4 text-white"
           style={{
             backgroundColor: "#ef4444",
             borderColor: "#f87171",
@@ -43,24 +43,21 @@ export function WalletConnection() {
   }
 
   return (
-    <div className="flex flex-col space-y-3">
-      {connectors.slice(0, 1).map((connector) => (
+    <div className="flex flex-col space-y-4">
+      {connectors.map((connector) => (
         <button
           key={connector.uid}
           onClick={() => connect({ connector })}
           disabled={isPending}
-          className="pixel-button mobile-touch-friendly px-6 py-3 text-white w-full"
+          className="w-full pixel-button text-xl mobile-ui-large mobile-touch-friendly px-6 py-4 text-white"
           style={{
             backgroundColor: "#22c55e",
             borderColor: "#4ade80",
           }}
         >
-          {isPending ? "🔄 Connecting..." : "🔗 Connect Wallet"}
+          {isPending ? "🔄 Connecting..." : `🔗 Connect ${connector.name}`}
         </button>
       ))}
-      <div className="text-xs opacity-75 text-center mt-2 mb-1">
-        Need test tokens?
-      </div>
       <FaucetButton />
     </div>
   );

@@ -6,11 +6,11 @@
   },
   "frame": {
     "version": "1",
-    "name": "Example Frame",
+    "name": "Sky Ascen",
     "iconUrl": "https://sky-ascent-somnia-hackathon.vercel.app/icon.png",
     "homeUrl": "https://sky-ascent-somnia-hackathon.vercel.app",
     "imageUrl": "https://sky-ascent-somnia-hackathon.vercel.app/image.png",
-    "buttonTitle": "Check this out",
+    "buttonTitle": "Play Now 🎈",
     "splashImageUrl": "https://sky-ascent-somnia-hackathon.vercel.app/splash.png",
     "splashBackgroundColor": "#eeccff",
     "webhookUrl": "https://sky-ascent-somnia-hackathon.vercel.app/api/webhook"

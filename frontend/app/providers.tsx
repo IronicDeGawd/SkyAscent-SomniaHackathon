@@ -1,14 +1,17 @@
 'use client'
 
-import { createContext, useContext, ReactNode, useState } from 'react'
+import { createContext, useContext, ReactNode, useState, useEffect } from 'react'
 import { blockchainManager, type PlayerStats } from '../utils/blockchain'
 import { WagmiProvider } from 'wagmi'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { wagmiConfig } from '../utils/wagmi'
+import { sdk } from '@farcaster/miniapp-sdk'
 
 interface User {
   address: string
   displayName: string
+  fid?: number
+  username?: string
 }
 
 interface AppContextType {
@@ -42,23 +45,53 @@ const queryClient = new QueryClient()
 
 export function Providers({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
-  const [isLoading, setIsLoading] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
   const [gameContract, setGameContract] = useState(null)
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [playerStats, setPlayerStats] = useState<PlayerStats | null>(null)
   const [walletAddress, setWalletAddress] = useState<string | null>(null)
+  const [farcasterUser, setFarcasterUser] = useState<{ fid: number, username?: string } | null>(null)
+
+  useEffect(() => {
+    const initFarcaster = async () => {
+      try {
+        // Initialize Farcaster SDK and get context
+        await sdk.actions.ready()
+        const context = await sdk.context
+        
+        if (context?.user) {
+          setFarcasterUser({ 
+            fid: context.user.fid, 
+            username: context.user.username || context.user.displayName
+          })
+        }
+      } catch (error) {
+        console.log('Farcaster context not available:', error)
+        // This is fine - we'll fall back to wallet-only mode
+      }
+      
+      // Always try to connect wallet regardless of Farcaster auth
+      await connectWallet()
+      setIsLoading(false)
+    }
+
+    initFarcaster()
+  }, [])
 
 
   const connectWallet = async () => {
     try {
-      setIsLoading(true)
+      if (!isLoading) setIsLoading(true)
       const address = await blockchainManager.connectWallet()
       setWalletAddress(address)
       if (address) {
-        // Set user based on wallet address
+        // Combine Farcaster and wallet info
+        const displayName = farcasterUser?.username || `${address.slice(0, 6)}...${address.slice(-4)}`
         setUser({
           address: address,
-          displayName: `${address.slice(0, 6)}...${address.slice(-4)}`
+          displayName,
+          fid: farcasterUser?.fid,
+          username: farcasterUser?.username
         })
         setIsAuthenticated(true)
         await refreshPlayerStats()
@@ -66,7 +99,7 @@ export function Providers({ children }: { children: ReactNode }) {
     } catch (error) {
       console.error('Failed to connect wallet:', error)
     } finally {
-      setIsLoading(false)
+      if (isLoading) setIsLoading(false)
     }
   }
 

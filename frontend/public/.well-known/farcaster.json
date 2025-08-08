@@ -1,11 +1,11 @@
 {
   "version": "1",
   "name": "Sky Ascent",
-  "iconUrl": "https://your-vercel-url.vercel.app/logo.png",
-  "homeUrl": "https://your-vercel-url.vercel.app",
-  "imageUrl": "https://your-vercel-url.vercel.app/logo.png",
+  "iconUrl": "https://sky-ascent-somnia-hackathon.vercel.app/logo.png",
+  "homeUrl": "https://sky-ascent-somnia-hackathon.vercel.app",
+  "imageUrl": "https://sky-ascent-somnia-hackathon.vercel.app/logo.png",
   "buttonTitle": "🎈 Play Now",
-  "splashImageUrl": "https://your-vercel-url.vercel.app/logo.png",
+  "splashImageUrl": "https://sky-ascent-somnia-hackathon.vercel.app/logo.png",
   "splashBackgroundColor": "#4A90E2",
   "description": "Navigate your balloon through obstacles, collect powerups, and compete on blockchain leaderboards"
 }

@@ -5,8 +5,7 @@ import { useApp } from "./providers";
 import Link from "next/link";
 import Image from "next/image";
 import { blockchainManager } from "../utils/blockchain";
-import { WalletTopRight } from "../components/WalletTopRight";
-import { FaucetButton } from "../components/FaucetButton";
+import { WalletConnection } from "../components/WalletConnection";
 
 export default function HomePage() {
   const { user, isLoading, isAuthenticated, playerStats, walletAddress } =
@@ -67,12 +66,9 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen text-white relative overflow-hidden bg-sky-extend">
-      {/* Wallet Connect/Disconnect - Top Right */}
-      <WalletTopRight />
-
       {/* Flowing cloud decorations distributed across full screen */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden">
-        {/* Top section clouds - horizontal movement */}
+        {/* Top section clouds - gentle floating */}
         <Image
           src="/cloud1.png"
           alt=""
@@ -82,8 +78,9 @@ export default function HomePage() {
           style={{
             imageRendering: "pixelated",
             top: "4rem",
-            left: "-120px",
-            animation: "cloudFloat 25s linear infinite",
+            left: "10%",
+            animation: "cloudBob 9s ease-in-out infinite",
+            animationDelay: "0s",
           }}
         />
         <Image
@@ -95,8 +92,8 @@ export default function HomePage() {
           style={{
             imageRendering: "pixelated",
             top: "8rem",
-            left: "-120px",
-            animation: "cloudFloat 30s linear infinite",
+            right: "15%",
+            animation: "cloudDrift 12s ease-in-out infinite",
             animationDelay: "3s",
           }}
         />
@@ -274,7 +271,7 @@ export default function HomePage() {
           </p>
         </div>
 
-        {/* Wallet Connection Section - Buttons moved to top-right navbar */}
+        {/* Wallet Connection Section */}
         {!isAuthenticated ? (
           <div className="bg-white-10 rounded-lg p-6 mb-6 backdrop-blur-sm text-center">
             <h2 className="text-xl font-semibold mb-4">Connect Your Wallet</h2>
@@ -282,7 +279,7 @@ export default function HomePage() {
               Connect your wallet to save progress, earn SKYC tokens, and
               compete on leaderboards!
             </p>
-            {/* WalletConnection buttons moved to top-right navbar */}
+            <WalletConnection />
           </div>
         ) : (
           <div className="bg-white-10 rounded-lg p-4 mb-6 backdrop-blur-sm">
@@ -304,7 +301,6 @@ export default function HomePage() {
                 🪙 SKYC: {gameStats.totalTokens}
               </span>
             </div>
-            {/* WalletConnection buttons moved to top-right navbar */}
           </div>
         )}
 
@@ -345,9 +341,6 @@ export default function HomePage() {
               ⚙️ Settings
             </button>
           </Link>
-
-          {/* Get STT Tokens Button */}
-          <FaucetButton />
         </div>
 
         {/* Weekly Leaderboard Preview */}

@@ -436,15 +436,6 @@ div[class*="__nextjs-error-overlay"] {
   }
 }
 
-@keyframes cloudFloat {
-  from {
-    transform: translateX(-120px);
-  }
-  to {
-    transform: translateX(calc(100vw + 120px));
-  }
-}
-
 @keyframes cloudBob {
   0%, 100% {
     transform: translateY(0px);
@@ -472,16 +463,6 @@ div[class*="__nextjs-error-overlay"] {
 .fade-in {
   animation: fadeIn 0.3s ease-in-out;
 }
-
-/* Cloud floating animations */
-.animate-cloud-float-1 { animation: cloudFloat 25s linear infinite; animation-delay: 0s; }
-.animate-cloud-float-2 { animation: cloudFloat 30s linear infinite; animation-delay: 3s; }
-.animate-cloud-float-3 { animation: cloudFloat 35s linear infinite; animation-delay: 6s; }
-.animate-cloud-float-4 { animation: cloudFloat 28s linear infinite; animation-delay: 9s; }
-.animate-cloud-float-5 { animation: cloudFloat 32s linear infinite; animation-delay: 12s; }
-.animate-cloud-float-6 { animation: cloudFloat 27s linear infinite; animation-delay: 15s; }
-.animate-cloud-float-7 { animation: cloudFloat 33s linear infinite; animation-delay: 18s; }
-.animate-cloud-float-8 { animation: cloudFloat 29s linear infinite; animation-delay: 21s; }
 
 /* Touch-friendly mobile controls */
 .mobile-controls {

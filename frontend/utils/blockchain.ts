@@ -12,8 +12,26 @@ export const SOMNIA_CONFIG = {
 
 // Contract addresses (to be updated after deployment)
 export const CONTRACT_ADDRESSES = {
-  GAME_CONTRACT: process.env.NEXT_PUBLIC_GAME_CONTRACT_ADDRESS || '',
+  GAME_CONTRACT: process.env.NEXT_PUBLIC_GAME_CONTRACT_ADDRESS || '0x7F52b899eE768943f700BC57A809A7F347AeAB7D',
   TOKEN_CONTRACT: process.env.NEXT_PUBLIC_TOKEN_CONTRACT_ADDRESS || ''
+}
+
+// Validate contract addresses
+export function validateContractAddress(address: string): boolean {
+  if (!address) return false
+  // Check if it's a valid Ethereum address format
+  const ethAddressRegex = /^0x[a-fA-F0-9]{40}$/
+  return ethAddressRegex.test(address)
+}
+
+// Get validated contract address with fallback
+export function getGameContractAddress(): string | null {
+  const address = CONTRACT_ADDRESSES.GAME_CONTRACT
+  if (validateContractAddress(address)) {
+    return address as `0x${string}`
+  }
+  console.warn('Invalid or missing game contract address:', address)
+  return null
 }
 
 // Smart contract ABI (simplified for the game contract)
@@ -68,25 +86,30 @@ export class BlockchainManager {
       }
 
       this.provider = new ethers.BrowserProvider(ethereumProvider)
-      
+
       // Request account access
       await ethereumProvider.request({ method: 'eth_requestAccounts' })
-      
+
       // Switch to Somnia network if needed
       await this.switchToSomniaWithProvider(ethereumProvider)
-      
+
       this.signer = await this.provider.getSigner()
       const address = await this.signer.getAddress()
-      
-      // Initialize contract
-      if (CONTRACT_ADDRESSES.GAME_CONTRACT) {
+
+      // Initialize contract with validated address
+      const contractAddress = getGameContractAddress()
+      if (contractAddress) {
         this.gameContract = new ethers.Contract(
-          CONTRACT_ADDRESSES.GAME_CONTRACT,
+          contractAddress,
           GAME_CONTRACT_ABI,
           this.signer
         )
+        console.log('Game contract initialized with address:', contractAddress)
+      } else {
+        console.error('Cannot initialize game contract: invalid or missing contract address')
+        throw new Error('Game contract address not configured properly')
       }
-      
+
       return address
     } catch (error) {
       console.error('Failed to connect wallet:', error)
@@ -153,7 +176,7 @@ export class BlockchainManager {
     try {
       const currentWeek = await this.gameContract.getCurrentWeek()
       const entries = await this.gameContract.getWeeklyTopScores(currentWeek, limit)
-      
+
       return entries.map((entry: any) => ({
         player: entry.player,
         score: Number(entry.score),
@@ -171,7 +194,7 @@ export class BlockchainManager {
 
     try {
       const sessions = await this.gameContract.getPlayerGameHistory(playerAddress, limit)
-      
+
       return sessions.map((session: any) => ({
         score: Number(session.score),
         altitude: Number(session.altitude),
@@ -192,7 +215,7 @@ export class BlockchainManager {
 
     try {
       const stats = await this.gameContract.getPlayerStats(playerAddress)
-      
+
       return {
         totalGames: Number(stats.totalGames),
         bestScore: Number(stats.bestScore),
@@ -234,7 +257,7 @@ export class BlockchainManager {
   // Get current connected account address
   async getCurrentAccount(): Promise<string | null> {
     if (!this.signer) return null
-    
+
     try {
       const address = await this.signer.getAddress()
       return address

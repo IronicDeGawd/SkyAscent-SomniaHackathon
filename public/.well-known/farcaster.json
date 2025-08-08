@@ -1,0 +1,11 @@
+{
+  "version": "1",
+  "name": "Sky Ascent",
+  "iconUrl": "https://skyascent.game/icon.png",
+  "homeUrl": "https://skyascent.game",
+  "imageUrl": "https://skyascent.game/preview.png",
+  "buttonTitle": "🎈 Play Now",
+  "splashImageUrl": "https://skyascent.game/splash.png",
+  "splashBackgroundColor": "#4A90E2",
+  "description": "Navigate your balloon through obstacles, collect powerups, and compete on blockchain leaderboards"
+}

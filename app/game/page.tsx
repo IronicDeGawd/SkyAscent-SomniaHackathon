@@ -1,0 +1,250 @@
+'use client'
+
+import { useEffect, useRef, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import dynamic from 'next/dynamic'
+import { useApp } from '../providers'
+import { sdk } from '@farcaster/miniapp-sdk'
+import { blockchainManager } from '../../utils/blockchain'
+
+// Dynamically import Phaser to avoid SSR issues
+const PhaserGame = dynamic(() => import('../../components/PhaserGame'), { 
+  ssr: false 
+})
+
+export default function GamePage() {
+  const router = useRouter()
+  const { user, isAuthenticated } = useApp()
+  const [gameState, setGameState] = useState<'loading' | 'playing' | 'paused' | 'ended'>('loading')
+  const [currentScore, setCurrentScore] = useState(0)
+  const [currentAltitude, setCurrentAltitude] = useState(0)
+  const [fuel, setFuel] = useState(100)
+  const [gameTime, setGameTime] = useState(0)
+  const [isSubmittingScore, setIsSubmittingScore] = useState(false)
+  const [submissionError, setSubmissionError] = useState<string | null>(null)
+  const [tokensEarned, setTokensEarned] = useState(0)
+
+  const handleGameEnd = async (finalScore: number, finalAltitude: number, finalTime: number) => {
+    setGameState('ended')
+    
+    // Submit score to blockchain if user is authenticated
+    if (isAuthenticated && user) {
+      setIsSubmittingScore(true)
+      setSubmissionError(null)
+      
+      try {
+        // Calculate expected tokens
+        const expectedTokens = Math.floor(finalScore / 100) + Math.floor(finalAltitude / 500)
+        setTokensEarned(expectedTokens)
+        
+        const txHash = await blockchainManager.submitScore(finalScore, finalAltitude, finalTime)
+        console.log('Score submitted successfully:', txHash)
+        
+        // Show success feedback
+        setTimeout(() => {
+          setIsSubmittingScore(false)
+        }, 2000)
+      } catch (error) {
+        console.error('Failed to submit score:', error)
+        setSubmissionError('Failed to submit score to blockchain. Playing in offline mode.')
+        setIsSubmittingScore(false)
+      }
+    }
+    
+    console.log('Game ended:', { finalScore, finalAltitude, finalTime })
+  }
+
+  const handleShareScore = async () => {
+    try {
+      const shareText = `🎈 Just scored ${currentScore} points in Sky Ascent! Reached ${currentAltitude}m altitude in ${Math.floor(gameTime / 60)}:${(gameTime % 60).toString().padStart(2, '0')}. Can you beat my score?`
+      
+      await sdk.actions.openUrl({
+        url: `https://warpcast.com/~/compose?text=${encodeURIComponent(shareText)}&embeds[]=${encodeURIComponent('https://skyascent.vercel.app')}`
+      })
+    } catch (error) {
+      console.error('Failed to share score:', error)
+    }
+  }
+
+  const handleRestart = () => {
+    setCurrentScore(0)
+    setCurrentAltitude(0)
+    setFuel(100)
+    setGameTime(0)
+    setIsSubmittingScore(false)
+    setSubmissionError(null)
+    setTokensEarned(0)
+    setGameState('playing')
+  }
+
+  const handleBackHome = () => {
+    router.push('/')
+  }
+
+  useEffect(() => {
+    // Auto-start the game when component loads
+    const timer = setTimeout(() => {
+      setGameState('playing')
+    }, 1000) // Give time for Phaser to initialize
+
+    return () => clearTimeout(timer)
+  }, [])
+
+  if (gameState === 'loading') {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-sky-400 to-sky-600 flex items-center justify-center text-white">
+        <div className="text-center">
+          <div className="text-6xl mb-4 animate-bounce">🎈</div>
+          <div className="text-xl">Loading game...</div>
+          <div className="text-sm mt-2 opacity-75">Initializing Phaser engine...</div>
+        </div>
+      </div>
+    )
+  }
+
+  if (gameState === 'ended') {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-sky-400 to-sky-600 flex items-center justify-center text-white">
+        <div className="bg-white/10 backdrop-blur-sm rounded-lg p-8 text-center max-w-md w-full mx-4">
+          <h1 className="text-3xl font-bold mb-4">Game Over!</h1>
+          <div className="space-y-2 mb-6">
+            <p className="text-xl">Final Score: {currentScore}</p>
+            <p className="text-lg">Max Altitude: {currentAltitude}m</p>
+            <p className="text-lg">Time: {Math.floor(gameTime / 60)}:{(gameTime % 60).toString().padStart(2, '0')}</p>
+            
+            {isAuthenticated && tokensEarned > 0 && (
+              <p className="text-yellow-300 text-lg font-bold">
+                🪙 +{tokensEarned} SKYC Tokens!
+              </p>
+            )}
+          </div>
+          
+          {isSubmittingScore && (
+            <div className="bg-blue-500/20 rounded-lg p-4 mb-4">
+              <p className="text-blue-300 text-sm">📤 Submitting score to blockchain...</p>
+            </div>
+          )}
+          
+          {submissionError && (
+            <div className="bg-red-500/20 rounded-lg p-4 mb-4">
+              <p className="text-red-300 text-sm">⚠️ {submissionError}</p>
+            </div>
+          )}
+          
+          {!isAuthenticated && (
+            <div className="bg-yellow-500/20 rounded-lg p-4 mb-4">
+              <p className="text-yellow-300 text-sm">💡 Sign in to save your score and earn tokens!</p>
+            </div>
+          )}
+          <div className="space-y-3">
+            {isAuthenticated && (
+              <button
+                onClick={handleShareScore}
+                className="w-full pixel-button mobile-touch-friendly px-6 py-3 text-white"
+                style={{
+                  backgroundColor: '#a855f7',
+                  borderColor: '#c084fc'
+                }}
+              >
+                📢 Share Score
+              </button>
+            )}
+            <button
+              onClick={handleRestart}
+              className="w-full pixel-button mobile-touch-friendly px-6 py-3 text-black"
+              style={{
+                backgroundColor: '#eab308',
+                borderColor: '#facc15'
+              }}
+            >
+              🎮 Play Again
+            </button>
+            <button
+              onClick={handleBackHome}
+              className="w-full pixel-button mobile-touch-friendly px-6 py-3 text-white"
+              style={{
+                backgroundColor: '#3b82f6',
+                borderColor: '#60a5fa'
+              }}
+            >
+              🏠 Back Home
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="min-h-screen bg-black relative">
+      {/* Game HUD */}
+      <div className="absolute inset-0 z-10 bg-black-60 backdrop-blur-sm text-white p-4" style={{top: 0, left: 0, right: 0, bottom: 'auto'}}>
+        <div className="flex justify-between items-center">
+          <div className="flex space-x-4 text-sm text-base">
+            <span className="game-stat" style={{backgroundColor: 'rgba(59, 130, 246, 0.3)', borderColor: '#60a5fa'}}>🎯 {currentScore}</span>
+            <span className="game-stat" style={{backgroundColor: 'rgba(34, 197, 94, 0.3)', borderColor: '#4ade80'}}>📏 {currentAltitude}m</span>
+          </div>
+          <div className="flex items-center space-x-2">
+            <span className="text-sm">Fuel:</span>
+            <div className="w-16 w-20 h-3 rounded" style={{backgroundColor: '#4b5563', border: '1px solid #6b7280'}}>
+              <div
+                className={`h-full rounded transition-all`}
+                style={{ 
+                  width: `${fuel}%`,
+                  backgroundColor: fuel > 50 ? '#22c55e' : fuel > 25 ? '#eab308' : '#ef4444',
+                  animation: fuel <= 25 ? 'pulse 2s infinite' : 'none'
+                }}
+              />
+            </div>
+            <span className="text-xs" style={{fontFamily: 'monospace'}}>{fuel}%</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Phaser Game Container - Portrait Mode Optimized */}
+      <div className="w-full h-screen flex items-center justify-center bg-black">
+        <div className="portrait-game-container">
+          <PhaserGame
+            onScoreUpdate={setCurrentScore}
+            onAltitudeUpdate={setCurrentAltitude}
+            onFuelUpdate={setFuel}
+            onTimeUpdate={setGameTime}
+            onGameEnd={handleGameEnd}
+            onGameStateChange={setGameState}
+          />
+        </div>
+      </div>
+
+      {/* Pause Menu */}
+      {gameState === 'paused' && (
+        <div className="absolute inset-0 bg-black-80 flex items-center justify-center z-20">
+          <div className="bg-white-10 backdrop-blur-sm rounded-lg p-8 text-center text-white">
+            <h2 className="text-2xl font-bold mb-6">Game Paused</h2>
+            <div className="space-y-3">
+              <button
+                onClick={() => setGameState('playing')}
+                className="w-full pixel-button mobile-touch-friendly px-6 py-3 text-black"
+                style={{
+                  backgroundColor: '#eab308',
+                  borderColor: '#facc15'
+                }}
+              >
+                Resume
+              </button>
+              <button
+                onClick={handleBackHome}
+                className="w-full pixel-button mobile-touch-friendly px-6 py-3 text-white"
+                style={{
+                  backgroundColor: '#ef4444',
+                  borderColor: '#f87171'
+                }}
+              >
+                Quit Game
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}

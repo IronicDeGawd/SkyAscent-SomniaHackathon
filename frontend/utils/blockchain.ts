@@ -55,6 +55,10 @@ export class BlockchainManager {
   private gameContract: ethers.Contract | null = null
   private signer: ethers.Signer | null = null
 
+  get isInitialized(): boolean {
+    return this.gameContract !== null && this.signer !== null
+  }
+
   async connectWallet(): Promise<string | null> {
     try {
       // Use Farcaster's EIP-1193 provider instead of window.ethereum

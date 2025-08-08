@@ -122,7 +122,7 @@ export default function ScoresPage() {
           <div className="bg-white/10 backdrop-blur-sm rounded-lg">
             {activeTab === 'weekly' ? (
               <div className="p-6">
-                <h2 className="text-2xl font-semibold mb-4">This Week's Top Players</h2>
+                <h2 className="text-2xl font-semibold mb-4">This Week&apos;s Top Players</h2>
                 <div className="space-y-3">
                   {weeklyLeaderboard.map((entry, index) => (
                     <div

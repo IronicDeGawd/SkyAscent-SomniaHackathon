@@ -21,7 +21,7 @@ export function WalletConnection() {
         window.navigator.userAgent.includes('Farcaster') ||
         document.referrer.includes('farcaster') ||
         window.location.href.includes('frame') ||
-        typeof window !== 'undefined' && (window as any).farcasterSDK;
+        typeof window !== 'undefined' && !!(window as unknown as { farcasterSDK?: unknown }).farcasterSDK;
       
       setIsFarcaster(isInFarcaster);
     };
@@ -38,7 +38,7 @@ export function WalletConnection() {
     } else {
       setWalletAddress(null);
     }
-  }, [isConnected, address, setWalletAddress]); // Removed refreshPlayerStats from deps
+  }, [isConnected, address, setWalletAddress]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (isConnected) {
     return (

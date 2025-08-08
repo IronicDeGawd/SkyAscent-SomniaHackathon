@@ -17,7 +17,7 @@ interface User {
 interface AppContextType {
   user: User | null
   isLoading: boolean
-  gameContract: any | null
+  gameContract: unknown | null
   isAuthenticated: boolean
   playerStats: PlayerStats | null
   walletAddress: string | null
@@ -46,7 +46,7 @@ const queryClient = new QueryClient()
 export function Providers({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [isLoading, setIsLoading] = useState(true)
-  const [gameContract, setGameContract] = useState(null)
+  const [gameContract] = useState(null)
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [playerStats, setPlayerStats] = useState<PlayerStats | null>(null)
   const [walletAddress, setWalletAddress] = useState<string | null>(null)

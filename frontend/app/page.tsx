@@ -15,7 +15,7 @@ export default function HomePage() {
     bestScore: 0,
     totalTokens: 0,
   });
-  const [weeklyLeaderboard, setWeeklyLeaderboard] = useState<any[]>([]);
+  const [weeklyLeaderboard, setWeeklyLeaderboard] = useState<Array<{ player: string; score: number }>>([]);
   const [leaderboardLoading, setLeaderboardLoading] = useState(true);
 
   useEffect(() => {
@@ -345,7 +345,7 @@ export default function HomePage() {
 
         {/* Weekly Leaderboard Preview */}
         <div className="bg-white-10 rounded-lg p-4 backdrop-blur-sm">
-          <h2 className="text-xl font-semibold mb-4">🏅 This Week's Leaders</h2>
+          <h2 className="text-xl font-semibold mb-4">🏅 This Week&apos;s Leaders</h2>
           <div className="space-y-2">
             {leaderboardLoading ? (
               <>

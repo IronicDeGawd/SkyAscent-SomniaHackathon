@@ -24,6 +24,8 @@ class GameScene extends Phaser.Scene {
   private obstacles!: Phaser.Physics.Arcade.Group;
   private powerups!: Phaser.Physics.Arcade.Group;
   private clouds!: Phaser.GameObjects.Group;
+  private backgroundClouds!: Phaser.GameObjects.Group;
+  private foregroundClouds!: Phaser.GameObjects.Group;
   private backgroundTile!: Phaser.GameObjects.TileSprite;
   private score = 0;
   private altitude = 0;
@@ -55,7 +57,7 @@ class GameScene extends Phaser.Scene {
   private gameStartTime = 0;
 
   // Performance optimizations
-  private objectPool: Map<string, Phaser.GameObjects.Sprite[]> = new Map();
+  private objectPool: Map<string, Phaser.Physics.Arcade.Sprite[]> = new Map();
   
   // New physics-based balloon system
   private buoyancyForce = 80; // Base lift force when fuel available
@@ -74,6 +76,21 @@ class GameScene extends Phaser.Scene {
   private dangerZoneActive = false;
   private thermalUpdraftActive = false;
   private windCurrentDirection = 0; // -1 left, 0 none, 1 right
+  
+  // NEW: Visual enhancement system
+  private currentWeather: 'clear' | 'windy' | 'stormy' | 'aurora' = 'clear';
+  private weatherChangeTime = 0;
+  private atmosphericParticles: Phaser.GameObjects.Particles.ParticleEmitter[] = [];
+  private lightningTimer?: Phaser.Time.TimerEvent;
+
+  // NEW: Audio system
+  private audioEnabled = true;
+  private masterVolume = 0.7;
+  private sfxVolume = 0.8;
+  private musicVolume = 0.3;
+  private sounds: { [key: string]: Phaser.Sound.BaseSound } = {};
+  private ambientSound?: Phaser.Sound.BaseSound;
+  private currentZoneMusic?: Phaser.Sound.BaseSound;
 
   // Touch control optimization
   private touchStartX = 0;
@@ -115,6 +132,40 @@ class GameScene extends Phaser.Scene {
     this.load.image("right_arrow", "/right_arrow.png");
 
     this.load.image("background", "/bg_extend.webp");
+
+    // Load audio files with fallback handling
+    this.loadAudioAssets();
+  }
+
+  loadAudioAssets() {
+    // Sound effects
+    try {
+      this.load.audio('powerup_fuel', ['/sounds/powerup_fuel.mp3', '/sounds/powerup_fuel.ogg']);
+      this.load.audio('powerup_shield', ['/sounds/powerup_shield.mp3', '/sounds/powerup_shield.ogg']);
+      this.load.audio('collision', ['/sounds/collision.mp3', '/sounds/collision.ogg']);
+      this.load.audio('balloon_pop', ['/sounds/balloon_pop.mp3', '/sounds/balloon_pop.ogg']);
+      this.load.audio('zone_transition', ['/sounds/zone_transition.mp3', '/sounds/zone_transition.ogg']);
+      this.load.audio('combo', ['/sounds/combo.mp3', '/sounds/combo.ogg']);
+      this.load.audio('danger_alert', ['/sounds/danger_alert.mp3', '/sounds/danger_alert.ogg']);
+      this.load.audio('countdown_tick', ['/sounds/countdown_tick.mp3', '/sounds/countdown_tick.ogg']);
+      this.load.audio('game_start', ['/sounds/game_start.mp3', '/sounds/game_start.ogg']);
+      
+      // Ambient sounds
+      this.load.audio('wind_city', ['/sounds/wind_city.mp3', '/sounds/wind_city.ogg']);
+      this.load.audio('wind_sky', ['/sounds/wind_sky.mp3', '/sounds/wind_sky.ogg']);
+      this.load.audio('wind_stratosphere', ['/sounds/wind_stratosphere.mp3', '/sounds/wind_stratosphere.ogg']);
+      this.load.audio('space_ambient', ['/sounds/space_ambient.mp3', '/sounds/space_ambient.ogg']);
+      this.load.audio('storm_ambient', ['/sounds/storm_ambient.mp3', '/sounds/storm_ambient.ogg']);
+      this.load.audio('aurora_ambient', ['/sounds/aurora_ambient.mp3', '/sounds/aurora_ambient.ogg']);
+      
+      // Music tracks
+      this.load.audio('music_city', ['/sounds/music_city.mp3', '/sounds/music_city.ogg']);
+      this.load.audio('music_sky', ['/sounds/music_sky.mp3', '/sounds/music_sky.ogg']);
+      this.load.audio('music_space', ['/sounds/music_space.mp3', '/sounds/music_space.ogg']);
+    } catch {
+      console.log('Audio files not available, continuing without sound');
+      this.audioEnabled = false;
+    }
   }
 
   createFallbackAssets() {
@@ -190,7 +241,11 @@ class GameScene extends Phaser.Scene {
     // Create groups
     this.obstacles = this.physics.add.group();
     this.powerups = this.physics.add.group();
+    
+    // NEW: Multi-layered cloud system for depth
+    this.backgroundClouds = this.add.group();
     this.clouds = this.add.group();
+    this.foregroundClouds = this.add.group();
 
     // Create balloon with proper texture handling
     this.createBalloon();
@@ -200,8 +255,11 @@ class GameScene extends Phaser.Scene {
     this.cameras.main.setFollowOffset(0, 300);
     this.cameras.main.setLerp(0.1, 0.1); // Smooth camera following
 
-    // Create initial clouds
-    this.createInitialClouds();
+    // NEW: Create enhanced parallax cloud layers
+    this.createParallaxCloudLayers();
+    
+    // Initialize atmospheric effects
+    this.initializeAtmosphericEffects();
 
     // Set up optimized controls
     this.setupOptimizedControls();
@@ -214,6 +272,9 @@ class GameScene extends Phaser.Scene {
 
     // Create countdown UI
     this.createCountdownUI();
+
+    // Initialize audio system
+    this.initializeAudioSystem();
 
     // Start countdown
     this.startCountdown();
@@ -314,7 +375,7 @@ class GameScene extends Phaser.Scene {
   getPooledObject(
     type: string,
     texture: string
-  ): Phaser.GameObjects.Sprite | null {
+  ): Phaser.Physics.Arcade.Sprite | null {
     const pool = this.objectPool.get(type);
     if (!pool) return null;
 
@@ -322,18 +383,147 @@ class GameScene extends Phaser.Scene {
     if (inactive) {
       inactive.setActive(true).setVisible(true);
       inactive.setTexture(texture);
-      return inactive;
+      return inactive as Phaser.Physics.Arcade.Sprite;
     }
 
     return null;
   }
 
-  returnToPool(sprite: Phaser.GameObjects.Sprite, type: string) {
+  returnToPool(sprite: Phaser.Physics.Arcade.Sprite, type: string) {
     sprite.setActive(false).setVisible(false);
     sprite.setPosition(-1000, -1000); // Move off screen
     const pool = this.objectPool.get(type);
     if (pool && !pool.includes(sprite)) {
       pool.push(sprite);
+    }
+  }
+
+  initializeAudioSystem() {
+    if (!this.audioEnabled) return;
+    
+    try {
+      // Initialize sound effects with error handling
+      const soundKeys = [
+        'powerup_fuel', 'powerup_shield', 'collision', 'balloon_pop',
+        'zone_transition', 'combo', 'danger_alert', 'countdown_tick', 'game_start'
+      ];
+      
+      soundKeys.forEach(key => {
+        if (this.sound.get(key)) {
+          this.sounds[key] = this.sound.add(key, { volume: this.sfxVolume * this.masterVolume });
+        }
+      });
+
+      // Initialize ambient sounds
+      const ambientKeys = ['wind_city', 'wind_sky', 'wind_stratosphere', 'space_ambient', 'storm_ambient', 'aurora_ambient'];
+      ambientKeys.forEach(key => {
+        if (this.sound.get(key)) {
+          this.sounds[key] = this.sound.add(key, { volume: this.musicVolume * this.masterVolume, loop: true });
+        }
+      });
+
+      // Initialize music tracks
+      const musicKeys = ['music_city', 'music_sky', 'music_space'];
+      musicKeys.forEach(key => {
+        if (this.sound.get(key)) {
+          this.sounds[key] = this.sound.add(key, { volume: this.musicVolume * this.masterVolume, loop: true });
+        }
+      });
+
+      // Start ambient sound for city zone
+      this.playAmbientSound('city');
+      
+    } catch {
+      console.log('Audio initialization failed, continuing without sound');
+      this.audioEnabled = false;
+    }
+  }
+
+  playSound(key: string, config?: { volume?: number; rate?: number; detune?: number }) {
+    if (!this.audioEnabled || !this.sounds[key]) return;
+    
+    try {
+      const sound = this.sounds[key];
+      if (sound && !sound.isPlaying) {
+        const volume = (config?.volume || 1) * this.sfxVolume * this.masterVolume;
+        sound.play({ 
+          volume,
+          rate: config?.rate || 1,
+          detune: config?.detune || 0
+        });
+      }
+    } catch {
+      console.log(`Failed to play sound: ${key}`);
+    }
+  }
+
+  playAmbientSound(zone: 'city' | 'sky' | 'stratosphere' | 'space') {
+    if (!this.audioEnabled) return;
+
+    // Stop current ambient sound
+    if (this.ambientSound?.isPlaying) {
+      this.ambientSound.stop();
+    }
+
+    // Stop current zone music
+    if (this.currentZoneMusic?.isPlaying) {
+      this.currentZoneMusic.stop();
+    }
+
+    // Play ambient sound for the zone
+    let ambientKey: string;
+    let musicKey: string;
+    
+    switch (zone) {
+      case 'city':
+        ambientKey = 'wind_city';
+        musicKey = 'music_city';
+        break;
+      case 'sky':
+        ambientKey = 'wind_sky';  
+        musicKey = 'music_sky';
+        break;
+      case 'stratosphere':
+        ambientKey = 'wind_stratosphere';
+        musicKey = 'music_sky';
+        break;
+      case 'space':
+        ambientKey = 'space_ambient';
+        musicKey = 'music_space';
+        break;
+    }
+
+    if (this.sounds[ambientKey]) {
+      this.ambientSound = this.sounds[ambientKey];
+      this.ambientSound.play({ volume: this.musicVolume * this.masterVolume });
+    }
+
+    if (this.sounds[musicKey]) {
+      this.currentZoneMusic = this.sounds[musicKey];
+      this.currentZoneMusic.play({ volume: this.musicVolume * this.masterVolume * 0.5 });
+    }
+  }
+
+  playWeatherSound(weather: 'clear' | 'windy' | 'stormy' | 'aurora') {
+    if (!this.audioEnabled) return;
+
+    switch (weather) {
+      case 'stormy':
+        if (this.sounds['storm_ambient']) {
+          this.sounds['storm_ambient'].play({ 
+            volume: this.musicVolume * this.masterVolume * 0.7,
+            loop: true 
+          });
+        }
+        break;
+      case 'aurora':
+        if (this.sounds['aurora_ambient']) {
+          this.sounds['aurora_ambient'].play({ 
+            volume: this.musicVolume * this.masterVolume * 0.4,
+            loop: true 
+          });
+        }
+        break;
     }
   }
 
@@ -601,6 +791,9 @@ class GameScene extends Phaser.Scene {
 
     // Update clouds
     this.updateClouds();
+    
+    // NEW: Update weather system
+    this.updateWeatherSystem(time);
 
     // Clean up off-screen objects
     this.cleanupObjects();
@@ -676,7 +869,7 @@ class GameScene extends Phaser.Scene {
     const deltaSeconds = delta / 1000;
     
     // Get current velocity
-    let currentVelocityY = balloonBody.velocity.y;
+    const currentVelocityY = balloonBody.velocity.y;
     
     if (this.fuel > 0) {
       // Calculate buoyancy force based on fuel level
@@ -731,7 +924,7 @@ class GameScene extends Phaser.Scene {
     
     // Spawn special environmental elements
     if (Math.random() < 0.003) { // 0.3% chance per frame
-      this.spawnEnvironmentalElement(time);
+      this.spawnEnvironmentalElement();
     }
   }
 
@@ -741,13 +934,15 @@ class GameScene extends Phaser.Scene {
       this.obstacles,
       (_balloon, obstacle) => {
         const obstacleSprite = obstacle as Phaser.Physics.Arcade.Sprite;
-        const balloonBody = this.balloon.body as Phaser.Physics.Arcade.Body;
-        const obstacleBody = obstacleSprite.body as Phaser.Physics.Arcade.Body;
 
         // Collision detected - removed debug logging for performance
 
         if (!this.shieldActive) {
           this.gameEndReason = `Hit by ${obstacleSprite.getData("type")}!`;
+          
+          // Play collision sound (balloon pop)
+          this.playSound('balloon_pop');
+          
           this.createDamageParticles(this.balloon.x, this.balloon.y);
           this.gameOver();
         } else {
@@ -755,6 +950,9 @@ class GameScene extends Phaser.Scene {
           this.destroyObstacle(obstacle as Phaser.Physics.Arcade.Sprite);
           this.score += 50;
           this.gameCallbacks.current.onScoreUpdate(this.score);
+
+          // Play collision sound (shield deflection)
+          this.playSound('collision', { volume: 0.6, rate: 1.2 });
 
           // Visual feedback
           this.cameras.main.shake(100, 0.02);
@@ -975,6 +1173,9 @@ class GameScene extends Phaser.Scene {
       case "fuel":
         this.fuel = Math.min(100, this.fuel + 30);
         this.score += 100 * this.getComboMultiplier();
+        
+        // Play fuel powerup sound
+        this.playSound('powerup_fuel');
 
         // NEW: Fuel boost effect - temporary lift efficiency increase
         this.liftEfficiency = 2.0; // Double efficiency for 3 seconds
@@ -986,6 +1187,9 @@ class GameScene extends Phaser.Scene {
       case "shield":
         this.activateShield();
         this.score += 200 * this.getComboMultiplier();
+        
+        // Play shield powerup sound
+        this.playSound('powerup_shield');
         break;
         
       case "thermal":
@@ -1043,51 +1247,169 @@ class GameScene extends Phaser.Scene {
     }
   }
 
+  // NEW: Enhanced particle system for visual feedback
   createCollectionEffect(sprite: Phaser.Physics.Arcade.Sprite) {
-    // Create particle burst effect
-    for (let i = 0; i < 8; i++) {
-      const particle = this.add.circle(sprite.x, sprite.y, 4, 0xffff00);
+    const powerupType = sprite.getData("type");
+    const isSpecial = sprite.getData("special");
+    
+    // Enhanced particle burst based on powerup type
+    const particleCount = isSpecial ? 15 : 8;
+    const particleColors = this.getPowerupColors(powerupType);
+    
+    for (let i = 0; i < particleCount; i++) {
+      const particle = this.add.circle(
+        sprite.x + Phaser.Math.Between(-10, 10), 
+        sprite.y + Phaser.Math.Between(-10, 10), 
+        Phaser.Math.Between(3, 8), 
+        Phaser.Math.RND.pick(particleColors)
+      );
 
-      const angle = (i / 8) * Math.PI * 2;
-      const speed = 100;
+      const angle = (i / particleCount) * Math.PI * 2 + Phaser.Math.FloatBetween(-0.3, 0.3);
+      const speed = Phaser.Math.Between(80, 140);
+      const gravity = Phaser.Math.Between(20, 50);
 
       this.tweens.add({
         targets: particle,
         x: particle.x + Math.cos(angle) * speed,
-        y: particle.y + Math.sin(angle) * speed,
+        y: particle.y + Math.sin(angle) * speed - gravity,
         alpha: 0,
-        scale: 0,
-        duration: 500,
-        ease: "Power2",
+        scale: isSpecial ? 1.5 : 0,
+        duration: Phaser.Math.Between(600, 1000),
+        ease: "Cubic.easeOut",
         onComplete: () => particle.destroy(),
       });
     }
 
-    // Calculate responsive font size for score popup
+    // Ring expansion effect for special powerups
+    if (isSpecial) {
+      const ring = this.add.circle(sprite.x, sprite.y, 10, particleColors[0], 0);
+      ring.setStrokeStyle(4, particleColors[1], 0.8);
+      
+      this.tweens.add({
+        targets: ring,
+        scaleX: 3,
+        scaleY: 3,
+        alpha: 0,
+        duration: 800,
+        ease: "Power2",
+        onComplete: () => ring.destroy(),
+      });
+    }
+
+    // Enhanced score popup with powerup-specific styling
+    this.createEnhancedScorePopup(sprite, powerupType, isSpecial);
+    
+    // Environmental particle trail
+    this.createEnvironmentalTrail(sprite.x, sprite.y, powerupType);
+  }
+  
+  getPowerupColors(powerupType: string): number[] {
+    switch (powerupType) {
+      case 'fuel':
+        return [0xff6600, 0xffaa00, 0xffdd44];
+      case 'shield':
+        return [0x0088ff, 0x44aaff, 0x88ccff];
+      case 'thermal':
+        return [0xff4444, 0xff8844, 0xffaa66];
+      case 'wind':
+        return [0x88ffff, 0xaaffff, 0xccffff];
+      case 'turbo':
+        return [0x00ff00, 0x44ff44, 0x88ff88];
+      default:
+        return [0xffff00, 0xffff88, 0xffffcc];
+    }
+  }
+  
+  createEnhancedScorePopup(sprite: Phaser.Physics.Arcade.Sprite, powerupType: string, isSpecial: boolean) {
+    const baseScore = powerupType === 'turbo' ? 300 : powerupType === 'shield' ? 200 : 
+                     powerupType === 'thermal' ? 150 : powerupType === 'wind' ? 120 : 100;
+    const actualScore = Math.floor(baseScore * this.getComboMultiplier());
+    
+    // Calculate responsive font size
     const scaleFactor = Math.min(
       this.cameras.main.width / 720,
       this.cameras.main.height / 1280
     );
-    const scorePopupFontSize = Math.max(32, 40 * scaleFactor); // Responsive score popup font
-
-    // Score popup
-    const scoreText = this.add.text(sprite.x, sprite.y, "+100", {
-      fontSize: `${scorePopupFontSize}px`,
-      color: "#ffff00",
+    const fontSize = Math.max(36, (isSpecial ? 48 : 42) * scaleFactor);
+    
+    const colors = this.getPowerupColors(powerupType);
+    const scoreText = this.add.text(sprite.x, sprite.y - 20, `+${actualScore}`, {
+      fontSize: `${fontSize}px`,
+      color: `#${colors[0].toString(16).padStart(6, '0')}`,
       fontFamily: 'var(--font-pixelify), "Pixelify Sans", monospace',
       stroke: "#000000",
-      strokeThickness: Math.max(2, 3 * scaleFactor),
+      strokeThickness: Math.max(3, 4 * scaleFactor),
     });
     scoreText.setOrigin(0.5);
 
+    // Enhanced animation with bounce
     this.tweens.add({
       targets: scoreText,
-      y: scoreText.y - 50,
+      y: scoreText.y - 80,
+      scaleX: isSpecial ? 1.3 : 1.1,
+      scaleY: isSpecial ? 1.3 : 1.1,
       alpha: 0,
-      duration: 1000,
-      ease: "Power2",
+      duration: 1200,
+      ease: "Back.easeOut",
       onComplete: () => scoreText.destroy(),
     });
+    
+    // Powerup type indicator
+    const typeEmoji = this.getPowerupEmoji(powerupType);
+    if (typeEmoji) {
+      const emojiText = this.add.text(sprite.x + 30, sprite.y - 10, typeEmoji, {
+        fontSize: `${fontSize * 0.8}px`,
+        fontFamily: 'var(--font-pixelify), "Pixelify Sans", monospace',
+      });
+      emojiText.setOrigin(0.5);
+      
+      this.tweens.add({
+        targets: emojiText,
+        y: emojiText.y - 60,
+        alpha: 0,
+        duration: 1000,
+        ease: "Power2",
+        onComplete: () => emojiText.destroy(),
+      });
+    }
+  }
+  
+  getPowerupEmoji(powerupType: string): string {
+    switch (powerupType) {
+      case 'fuel': return '⛽';
+      case 'shield': return '🛡️';
+      case 'thermal': return '🌡️';
+      case 'wind': return '💨';
+      case 'turbo': return '🚀';
+      default: return '';
+    }
+  }
+  
+  createEnvironmentalTrail(x: number, y: number, powerupType: string) {
+    // Create trailing particles based on environment
+    const trailCount = 5;
+    const colors = this.getPowerupColors(powerupType);
+    
+    for (let i = 0; i < trailCount; i++) {
+      const trail = this.add.circle(
+        x + Phaser.Math.Between(-20, 20), 
+        y + Phaser.Math.Between(-20, 20), 
+        Phaser.Math.Between(2, 4), 
+        colors[Math.floor(Math.random() * colors.length)],
+        0.6
+      );
+      
+      // Upward floating effect
+      this.tweens.add({
+        targets: trail,
+        y: trail.y - Phaser.Math.Between(100, 200),
+        alpha: 0,
+        scale: 0.2,
+        duration: Phaser.Math.Between(2000, 3000),
+        ease: "Sine.easeOut",
+        onComplete: () => trail.destroy(),
+      });
+    }
   }
 
   destroyObstacle(obstacle: Phaser.Physics.Arcade.Sprite) {
@@ -1113,20 +1435,23 @@ class GameScene extends Phaser.Scene {
     obstacle.destroy();
   }
 
+  // NEW: Enhanced damage particles with environmental effects
   createDamageParticles(x: number, y: number) {
-    // Create red/orange damage particles explosion
-    for (let i = 0; i < 12; i++) {
+    // Main explosion burst
+    const particleCount = 18;
+    const damageColors = [0xff0000, 0xff4400, 0xff6600, 0xff8800, 0xffaa00];
+    
+    for (let i = 0; i < particleCount; i++) {
       const particle = this.add.circle(
-        x,
-        y,
-        Phaser.Math.Between(3, 8),
-        Phaser.Math.Between(0xff0000, 0xff8800)
+        x + Phaser.Math.Between(-5, 5),
+        y + Phaser.Math.Between(-5, 5),
+        Phaser.Math.Between(4, 12),
+        Phaser.Math.RND.pick(damageColors)
       );
 
-      const angle =
-        (i / 12) * Math.PI * 2 + Phaser.Math.FloatBetween(-0.5, 0.5);
-      const speed = Phaser.Math.Between(80, 150);
-      const gravity = Phaser.Math.Between(50, 100);
+      const angle = (i / particleCount) * Math.PI * 2 + Phaser.Math.FloatBetween(-0.4, 0.4);
+      const speed = Phaser.Math.Between(100, 200);
+      const gravity = Phaser.Math.Between(30, 80);
 
       this.tweens.add({
         targets: particle,
@@ -1134,17 +1459,25 @@ class GameScene extends Phaser.Scene {
         y: particle.y + Math.sin(angle) * speed + gravity,
         alpha: 0,
         scale: 0,
-        duration: Phaser.Math.Between(800, 1200),
-        ease: "Power2",
+        duration: Phaser.Math.Between(1000, 1600),
+        ease: "Cubic.easeOut",
         onComplete: () => particle.destroy(),
       });
     }
 
-    // Create sparks effect
-    for (let i = 0; i < 6; i++) {
-      const spark = this.add.rectangle(x, y, 2, 8, 0xffff00);
+    // Enhanced spark effects with multiple types
+    for (let i = 0; i < 10; i++) {
+      const sparkType = Math.random() > 0.5 ? 'line' : 'star';
+      let spark;
+      
+      if (sparkType === 'line') {
+        spark = this.add.rectangle(x, y, Phaser.Math.Between(2, 4), Phaser.Math.Between(8, 16), 0xffff00);
+      } else {
+        spark = this.add.star(x, y, 4, Phaser.Math.Between(3, 6), Phaser.Math.Between(6, 12), 0xffffff);
+      }
+      
       const angle = Math.random() * Math.PI * 2;
-      const speed = Phaser.Math.Between(100, 200);
+      const speed = Phaser.Math.Between(120, 250);
 
       spark.setRotation(angle);
 
@@ -1153,55 +1486,185 @@ class GameScene extends Phaser.Scene {
         x: spark.x + Math.cos(angle) * speed,
         y: spark.y + Math.sin(angle) * speed,
         alpha: 0,
-        scaleX: 0,
-        duration: 600,
-        ease: "Power2",
+        scaleX: sparkType === 'line' ? 0 : 0.1,
+        scaleY: sparkType === 'line' ? 0 : 0.1,
+        rotation: spark.rotation + Math.PI * 2,
+        duration: Phaser.Math.Between(400, 800),
+        ease: "Power3",
         onComplete: () => spark.destroy(),
       });
     }
+    
+    // Shockwave effect
+    const shockwave = this.add.circle(x, y, 5, 0xff4400, 0);
+    shockwave.setStrokeStyle(6, 0xff0000, 0.8);
+    
+    this.tweens.add({
+      targets: shockwave,
+      scaleX: 4,
+      scaleY: 4,
+      alpha: 0,
+      duration: 600,
+      ease: "Power2",
+      onComplete: () => shockwave.destroy(),
+    });
+    
+    // Screen effects
+    this.cameras.main.shake(200, 0.03);
+    this.cameras.main.flash(150, 255, 100, 100, false);
   }
 
-  createInitialClouds() {
-    for (let i = 0; i < 15; i++) {
-      this.createCloud(
-        Phaser.Math.Between(0, this.cameras.main.width),
-        Phaser.Math.Between(-2000, this.cameras.main.height)
+  // NEW: Enhanced parallax cloud layer system
+  createParallaxCloudLayers() {
+    // Background clouds - far layer (slowest parallax)
+    for (let i = 0; i < 8; i++) {
+      this.createEnhancedCloud(
+        'background',
+        Phaser.Math.Between(-100, this.cameras.main.width + 100),
+        Phaser.Math.Between(-3000, this.cameras.main.height + 500)
+      );
+    }
+    
+    // Middle clouds - standard layer 
+    for (let i = 0; i < 12; i++) {
+      this.createEnhancedCloud(
+        'middle',
+        Phaser.Math.Between(-50, this.cameras.main.width + 50),
+        Phaser.Math.Between(-2000, this.cameras.main.height + 300)
+      );
+    }
+    
+    // Foreground clouds - near layer (fastest parallax)
+    for (let i = 0; i < 6; i++) {
+      this.createEnhancedCloud(
+        'foreground',
+        Phaser.Math.Between(-200, this.cameras.main.width + 200),
+        Phaser.Math.Between(-1000, this.cameras.main.height + 200)
       );
     }
   }
 
-  createCloud(x: number, y: number) {
+  createEnhancedCloud(layer: 'background' | 'middle' | 'foreground', x: number, y: number) {
     const cloudType = Math.random() > 0.5 ? "cloud1" : "cloud2";
-    const textureKey = this.textures.exists(cloudType)
-      ? cloudType
-      : "cloud_fallback";
+    const textureKey = this.textures.exists(cloudType) ? cloudType : "cloud_fallback";
 
     const cloud = this.add.sprite(x, y, textureKey);
-    cloud.setScale(Phaser.Math.FloatBetween(0.3, 0.7));
-    cloud.setAlpha(Phaser.Math.FloatBetween(0.4, 0.7));
-    cloud.setScrollFactor(Phaser.Math.FloatBetween(0.1, 0.3));
-    cloud.setDepth(Phaser.Math.Between(0, 2));
-    this.clouds.add(cloud);
+    
+    // Layer-specific properties for parallax effect
+    switch (layer) {
+      case 'background':
+        cloud.setScale(Phaser.Math.FloatBetween(0.8, 1.2));
+        cloud.setAlpha(Phaser.Math.FloatBetween(0.15, 0.3));
+        cloud.setScrollFactor(0.05, 0.05); // Slowest parallax
+        cloud.setDepth(-20);
+        cloud.setTint(0xcccccc); // Slightly gray for distance
+        this.backgroundClouds.add(cloud);
+        break;
+        
+      case 'middle':
+        cloud.setScale(Phaser.Math.FloatBetween(0.4, 0.8));
+        cloud.setAlpha(Phaser.Math.FloatBetween(0.4, 0.6));
+        cloud.setScrollFactor(0.15, 0.15); // Medium parallax
+        cloud.setDepth(-10);
+        this.clouds.add(cloud);
+        break;
+        
+      case 'foreground':
+        cloud.setScale(Phaser.Math.FloatBetween(0.6, 1.0));
+        cloud.setAlpha(Phaser.Math.FloatBetween(0.7, 0.9));
+        cloud.setScrollFactor(0.4, 0.3); // Fastest parallax
+        cloud.setDepth(-5);
+        cloud.setTint(0xffffff); // Pure white for closeness
+        this.foregroundClouds.add(cloud);
+        break;
+    }
 
-    // Gentle drift
+    // Environmental tinting based on altitude zone
+    this.applyEnvironmentalTinting(cloud, layer);
+
+    // Gentle drift animation with layer-appropriate speed
+    const driftSpeed = layer === 'background' ? 30000 : layer === 'middle' ? 20000 : 15000;
     this.tweens.add({
       targets: cloud,
-      x: cloud.x + Phaser.Math.Between(-30, 30),
-      duration: Phaser.Math.Between(10000, 20000),
+      x: cloud.x + Phaser.Math.Between(-50, 50),
+      duration: Phaser.Math.Between(driftSpeed - 5000, driftSpeed + 5000),
       yoyo: true,
       repeat: -1,
       ease: "Sine.easeInOut",
     });
   }
+  
+  applyEnvironmentalTinting(cloud: Phaser.GameObjects.Sprite, layer: string) {
+    // Tint clouds based on current environmental zone
+    let tintColor = 0xffffff;
+    
+    switch (this.currentEnvironmentalZone) {
+      case 'city':
+        tintColor = layer === 'foreground' ? 0xf0f0f0 : 0xe0e0e0; // Slight pollution haze
+        break;
+      case 'sky':
+        tintColor = 0xffffff; // Pure white
+        break;
+      case 'stratosphere':
+        tintColor = layer === 'background' ? 0xe6f3ff : 0xf0f8ff; // Slight blue tint
+        break;
+      case 'space':
+        tintColor = layer === 'background' ? 0x9999ff : 0xccccff; // Purple/blue space tint
+        break;
+    }
+    
+    cloud.setTint(tintColor);
+  }
 
   updateClouds() {
-    // Add new clouds as we ascend
-    if (Math.random() < 0.02 && this.clouds.children.entries.length < 30) {
-      this.createCloud(
-        Phaser.Math.Between(0, this.cameras.main.width),
-        this.balloon.y - 600
+    // Spawn new clouds dynamically as balloon ascends
+    const spawnChance = 0.015; // 1.5% chance per frame
+    
+    if (Math.random() < spawnChance) {
+      // Randomly choose layer to spawn new cloud
+      const layers = ['background', 'middle', 'foreground'];
+      const weights = [0.4, 0.4, 0.2]; // Background and middle more common
+      const layer = this.weightedRandom(layers, weights) as 'background' | 'middle' | 'foreground';
+      
+      // Spawn ahead of balloon
+      this.createEnhancedCloud(
+        layer,
+        Phaser.Math.Between(-100, this.cameras.main.width + 100),
+        this.balloon.y - Phaser.Math.Between(800, 1200)
       );
     }
+    
+    // Clean up old clouds with layer limits
+    this.cleanupCloudLayers();
+  }
+  
+  cleanupCloudLayers() {
+    const cleanupY = this.balloon.y + 500;
+    const maxClouds = { background: 15, middle: 20, foreground: 10 };
+    
+    [
+      { group: this.backgroundClouds, max: maxClouds.background },
+      { group: this.clouds, max: maxClouds.middle },
+      { group: this.foregroundClouds, max: maxClouds.foreground }
+    ].forEach(({ group, max }) => {
+      const cloudsToRemove: Phaser.GameObjects.Sprite[] = [];
+      
+      group.children.entries.forEach((cloud) => {
+        const sprite = cloud as Phaser.GameObjects.Sprite;
+        if (sprite.y > cleanupY) {
+          cloudsToRemove.push(sprite);
+        }
+      });
+      
+      // Remove oldest clouds if over limit
+      const excessCount = group.children.entries.length - max;
+      if (excessCount > 0) {
+        cloudsToRemove.slice(0, excessCount).forEach(sprite => sprite.destroy());
+      } else if (cloudsToRemove.length > 0) {
+        // Remove only the furthest clouds
+        cloudsToRemove.slice(0, Math.min(3, cloudsToRemove.length)).forEach(sprite => sprite.destroy());
+      }
+    });
   }
 
   cleanupObjects() {
@@ -1265,8 +1728,11 @@ class GameScene extends Phaser.Scene {
     // Clean up countdown timer if still running
     if (this.countdownTimer) {
       this.countdownTimer.destroy();
-      this.countdownTimer = null as any;
+      this.countdownTimer = null as unknown as Phaser.Time.TimerEvent;
     }
+
+    // Stop all audio
+    this.stopAllAudio();
 
     // Stop balloon
     const balloonBody = this.balloon.body as Phaser.Physics.Arcade.Body;
@@ -1388,7 +1854,7 @@ class GameScene extends Phaser.Scene {
     // Safety check: prevent multiple countdown timers
     if (this.countdownTimer) {
       this.countdownTimer.destroy();
-      this.countdownTimer = null as any;
+      this.countdownTimer = null as unknown as Phaser.Time.TimerEvent;
     }
 
     // Prevent starting countdown if already completed in this scene
@@ -1425,6 +1891,9 @@ class GameScene extends Phaser.Scene {
       // Update display
       this.countdownText.setText(this.countdownValue.toString());
 
+      // Play countdown tick sound
+      this.playSound('countdown_tick');
+
       // Pulse animation
       this.tweens.add({
         targets: this.countdownText,
@@ -1446,7 +1915,7 @@ class GameScene extends Phaser.Scene {
       // CRITICAL: Stop the timer immediately to prevent infinite loop
       if (this.countdownTimer) {
         this.countdownTimer.destroy();
-        this.countdownTimer = null as any; // Clear reference
+        this.countdownTimer = null as unknown as Phaser.Time.TimerEvent; // Clear reference
       }
 
       // Ensure countdown is marked as complete
@@ -1456,6 +1925,9 @@ class GameScene extends Phaser.Scene {
       // Show "GO!"
       this.countdownText.setText("GO!");
       this.countdownText.setColor("#00ff00");
+      
+      // Play game start sound
+      this.playSound('game_start');
 
       this.tweens.add({
         targets: this.countdownText,
@@ -1486,7 +1958,7 @@ class GameScene extends Phaser.Scene {
     // Ensure timer is fully cleaned up
     if (this.countdownTimer) {
       this.countdownTimer.destroy();
-      this.countdownTimer = null as any;
+      this.countdownTimer = null as unknown as Phaser.Time.TimerEvent;
     }
 
     // Start game with clean state
@@ -1530,6 +2002,12 @@ class GameScene extends Phaser.Scene {
   }
   
   onEnvironmentalZoneChange(newZone: string) {
+    // Play zone transition sound
+    this.playSound('zone_transition');
+    
+    // Update ambient sound for new zone
+    this.playAmbientSound(newZone as 'city' | 'sky' | 'stratosphere' | 'space');
+    
     // Visual feedback for zone transitions
     this.cameras.main.flash(1000, 100, 150, 255, false);
     
@@ -1857,7 +2335,6 @@ class GameScene extends Phaser.Scene {
   
   activateTurboBoost() {
     // Temporary massive speed boost
-    const balloonBody = this.balloon.body as Phaser.Physics.Arcade.Body;
     this.liftEfficiency = 4.0; // Quadruple efficiency
     this.buoyancyForce *= 2; // Double buoyancy
     
@@ -1906,8 +2383,12 @@ class GameScene extends Phaser.Scene {
     
     this.lastComboTime = currentTime;
     
-    // Show combo text
+    // Show combo text and play sound
     if (this.comboCount > 1) {
+      // Play combo sound with increasing pitch for higher combos
+      const pitchMultiplier = 1 + (this.comboCount - 2) * 0.1; // Increase pitch for higher combos
+      this.playSound('combo', { volume: 0.8, rate: pitchMultiplier });
+      
       const comboText = this.add.text(
         this.balloon.x,
         this.balloon.y - 80,
@@ -1939,7 +2420,7 @@ class GameScene extends Phaser.Scene {
   }
 
   // NEW: Environmental element spawning
-  spawnEnvironmentalElement(time: number) {
+  spawnEnvironmentalElement() {
     const elementTypes = ['dangerZone', 'bonusAltitude'];
     const elementType = elementTypes[Math.floor(Math.random() * elementTypes.length)];
     
@@ -1955,6 +2436,9 @@ class GameScene extends Phaser.Scene {
   
   createDangerZone() {
     if (this.dangerZoneActive) return;
+    
+    // Play danger zone alert sound
+    this.playSound('danger_alert', { volume: 0.8 });
     
     this.dangerZoneActive = true;
     const width = this.cameras.main.width;
@@ -2062,6 +2546,190 @@ class GameScene extends Phaser.Scene {
     });
   }
 
+  // NEW: Initialize atmospheric effects system
+  initializeAtmosphericEffects() {
+    // Create particle systems for weather effects
+    this.createWeatherParticles();
+    
+    // Set initial weather
+    this.weatherChangeTime = this.time.now + Phaser.Math.Between(15000, 30000);
+  }
+  
+  createWeatherParticles() {
+    // Wind streaks for windy weather
+    const windParticles = this.add.particles(0, 0, 'cloud_fallback', {
+      speed: { min: 100, max: 200 },
+      scale: { start: 0.1, end: 0.01 },
+      alpha: { start: 0.3, end: 0 },
+      lifespan: 2000,
+      frequency: 200,
+      active: false
+    });
+    windParticles.setScrollFactor(0.3);
+    this.atmosphericParticles.push(windParticles);
+    
+    // Stars for space zone
+    const starParticles = this.add.particles(0, 0, 'shield_fallback', {
+      speed: 0,
+      scale: { min: 0.05, max: 0.1 },
+      alpha: { min: 0.6, max: 1.0 },
+      lifespan: Infinity,
+      frequency: 100,
+      active: false,
+      tint: [0xffffff, 0xffffcc, 0xccffff]
+    });
+    starParticles.setScrollFactor(0.02);
+    this.atmosphericParticles.push(starParticles);
+  }
+  
+  // NEW: Dynamic weather system
+  updateWeatherSystem(time: number) {
+    // Change weather periodically
+    if (time > this.weatherChangeTime) {
+      this.changeWeather();
+      this.weatherChangeTime = time + Phaser.Math.Between(20000, 45000);
+    }
+    
+    // Update weather effects
+    this.updateWeatherEffects();
+  }
+  
+  changeWeather() {
+    const weatherTypes: Array<'clear' | 'windy' | 'stormy' | 'aurora'> = ['clear', 'windy', 'stormy', 'aurora'];
+    const weights = this.getWeatherWeights();
+    
+    const newWeather = this.weightedRandom(weatherTypes, weights) as 'clear' | 'windy' | 'stormy' | 'aurora';
+    
+    if (newWeather !== this.currentWeather) {
+      this.currentWeather = newWeather;
+      
+      // Play weather transition sound
+      this.playWeatherSound(newWeather);
+      
+      this.applyWeatherEffects();
+    }
+  }
+  
+  getWeatherWeights(): number[] {
+    // Weather probability based on environmental zone
+    switch (this.currentEnvironmentalZone) {
+      case 'city':
+        return [0.6, 0.3, 0.1, 0.0]; // clear, windy, stormy, aurora
+      case 'sky':
+        return [0.4, 0.4, 0.2, 0.0];
+      case 'stratosphere':
+        return [0.3, 0.3, 0.3, 0.1];
+      case 'space':
+        return [0.2, 0.1, 0.1, 0.6]; // aurora common in space
+      default:
+        return [0.5, 0.3, 0.15, 0.05];
+    }
+  }
+  
+  applyWeatherEffects() {
+    // Reset all particles
+    this.atmosphericParticles.forEach(emitter => {
+      emitter.stop();
+    });
+    
+    switch (this.currentWeather) {
+      case 'clear':
+        // No special effects, just clear skies
+        break;
+        
+      case 'windy':
+        // Activate wind particle streaks
+        if (this.atmosphericParticles[0]) {
+          this.atmosphericParticles[0].start();
+        }
+        // Slightly increase obstacle movement
+        this.gameSpeed *= 1.1;
+        break;
+        
+      case 'stormy':
+        // Dark environment and occasional lightning
+        this.startLightningEffect();
+        // Increase difficulty
+        this.gameSpeed *= 1.2;
+        break;
+        
+      case 'aurora':
+        // Beautiful aurora colors (only in space/stratosphere)
+        if (this.currentEnvironmentalZone === 'space' || this.currentEnvironmentalZone === 'stratosphere') {
+          this.createAuroraEffect();
+        }
+        // Activate star particles
+        if (this.atmosphericParticles[1]) {
+          this.atmosphericParticles[1].start();
+        }
+        break;
+    }
+  }
+  
+  startLightningEffect() {
+    if (this.lightningTimer) {
+      this.lightningTimer.destroy();
+    }
+    
+    this.lightningTimer = this.time.addEvent({
+      delay: Phaser.Math.Between(3000, 8000),
+      callback: () => {
+        // Lightning flash
+        this.cameras.main.flash(200, 255, 255, 255, false);
+        
+        // Thunder sound effect substitute (camera shake)
+        this.time.delayedCall(Phaser.Math.Between(500, 2000), () => {
+          this.cameras.main.shake(300, 0.02);
+        });
+      },
+      loop: true
+    });
+  }
+  
+  createAuroraEffect() {
+    // Create flowing aurora curtains
+    for (let i = 0; i < 5; i++) {
+      const aurora = this.add.rectangle(
+        Phaser.Math.Between(0, this.cameras.main.width),
+        this.balloon.y - Phaser.Math.Between(300, 800),
+        Phaser.Math.Between(20, 60),
+        Phaser.Math.Between(200, 400),
+        Phaser.Math.Between(0x00ff88, 0x8888ff),
+        0.3
+      );
+      
+      aurora.setScrollFactor(0.1, 0.1);
+      
+      // Flowing animation
+      this.tweens.add({
+        targets: aurora,
+        alpha: 0.1,
+        scaleY: 1.5,
+        duration: Phaser.Math.Between(4000, 8000),
+        yoyo: true,
+        repeat: -1,
+        ease: 'Sine.easeInOut'
+      });
+      
+      // Horizontal drift
+      this.tweens.add({
+        targets: aurora,
+        x: aurora.x + Phaser.Math.Between(-100, 100),
+        duration: Phaser.Math.Between(15000, 25000),
+        yoyo: true,
+        repeat: -1,
+        ease: 'Sine.easeInOut'
+      });
+    }
+  }
+  
+  updateWeatherEffects() {
+    // Update particle positions to follow balloon
+    this.atmosphericParticles.forEach(emitter => {
+      emitter.setPosition(this.balloon.x, this.balloon.y - 300);
+    });
+  }
+
   // Track player movement for adaptive spawning
   trackPlayerMovement() {
     const balloonBody = this.balloon.body as Phaser.Physics.Arcade.Body;
@@ -2090,12 +2758,47 @@ class GameScene extends Phaser.Scene {
     return items[items.length - 1];
   }
 
+  stopAllAudio() {
+    if (!this.audioEnabled) return;
+    
+    try {
+      // Stop all sound effects
+      Object.values(this.sounds).forEach(sound => {
+        if (sound?.isPlaying) {
+          sound.stop();
+        }
+      });
+
+      // Stop ambient sound
+      if (this.ambientSound?.isPlaying) {
+        this.ambientSound.stop();
+      }
+
+      // Stop zone music  
+      if (this.currentZoneMusic?.isPlaying) {
+        this.currentZoneMusic.stop();
+      }
+
+      // Stop weather sounds
+      ['storm_ambient', 'aurora_ambient'].forEach(key => {
+        if (this.sounds[key]?.isPlaying) {
+          this.sounds[key].stop();
+        }
+      });
+    } catch (error) {
+      console.log('Error stopping audio:', error);
+    }
+  }
+
   // Scene cleanup method to handle proper destruction
   shutdown() {
+    // Stop all audio
+    this.stopAllAudio();
+    
     // Clean up countdown timer
     if (this.countdownTimer) {
       this.countdownTimer.destroy();
-      this.countdownTimer = null as any;
+      this.countdownTimer = null as unknown as Phaser.Time.TimerEvent;
     }
 
     // Clean up background tile

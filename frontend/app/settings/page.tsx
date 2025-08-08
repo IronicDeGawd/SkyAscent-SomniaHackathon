@@ -35,9 +35,9 @@ export default function SettingsPage() {
       totalTokens: 250,
       totalPlayTime: 1800, // seconds
     });
-  }, []);
+  }, [settings]);
 
-  const updateSetting = (key: string, value: any) => {
+  const updateSetting = (key: string, value: unknown) => {
     const newSettings = { ...settings, [key]: value };
     setSettings(newSettings);
     localStorage.setItem("skyAscentSettings", JSON.stringify(newSettings));

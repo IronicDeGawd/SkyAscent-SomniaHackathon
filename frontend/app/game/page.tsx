@@ -69,7 +69,7 @@ function getWittyComment(reason: string): string {
 
 export default function GamePage() {
   const router = useRouter();
-  const { user, isAuthenticated } = useApp();
+  const { user, isAuthenticated, invalidateLeaderboardCache } = useApp();
   const { address: walletAddress, isConnected: isWalletConnected } =
     useAccount();
   const [gameState, setGameState] = useState<
@@ -145,8 +145,10 @@ export default function GamePage() {
       console.log("Score submitted successfully to blockchain:", hash);
       // Clear any previous error
       setSubmissionError(null);
+      // Invalidate leaderboard cache to show updated rankings
+      invalidateLeaderboardCache();
     }
-  }, [isConfirmed, hash]);
+  }, [isConfirmed, hash, invalidateLeaderboardCache]);
 
   // Debug information (can be removed in production)
   useEffect(() => {

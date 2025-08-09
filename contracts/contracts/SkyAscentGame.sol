@@ -24,6 +24,7 @@ contract SkyAscentGame is ERC20, Ownable, ReentrancyGuard {
     // Storage
     mapping(address => GameSession[]) public playerHistory;
     mapping(uint256 => LeaderboardEntry[]) public weeklyLeaderboards;
+    mapping(uint256 => bool) public weeklyRewardsClaimed; // Track if week's rewards were claimed
 
     // Events
     event GameCompleted(
@@ -34,6 +35,7 @@ contract SkyAscentGame is ERC20, Ownable, ReentrancyGuard {
     );
     event TokensEarned(address indexed player, uint256 amount);
     event WeeklyLeaderboardUpdated(uint256 week, address player, uint256 score);
+    event WeeklyRewardsClaimed(uint256 week, address[] winners, uint256[] rewards);
     event LeaderboardReset(uint256 week);
     event PlayerHistoryReset(address player);
     event GlobalReset();
@@ -44,6 +46,12 @@ contract SkyAscentGame is ERC20, Ownable, ReentrancyGuard {
     uint256 public constant REVIVE_COST = 50 * 10 ** 18; // 50 SKYC for revive
     uint256 public constant MAX_TOTAL_SUPPLY = 10000000 * 10 ** 18; // 10 million SKYC max supply
     uint256 public constant TREASURY_RESERVE = 9000000 * 10 ** 18; // 9 million for rewards treasury
+    
+    // Weekly leaderboard rewards - UPDATED AMOUNTS
+    uint256 public constant FIRST_PLACE_REWARD = 350 * 10 ** 18;  // 350 SKYC for 1st place
+    uint256 public constant SECOND_PLACE_REWARD = 200 * 10 ** 18; // 200 SKYC for 2nd place
+    uint256 public constant THIRD_PLACE_REWARD = 100 * 10 ** 18;  // 100 SKYC for 3rd place
+    uint256 public constant TOP_10_REWARD = 15 * 10 ** 18;        // 15 SKYC for places 4-10
 
     // Constructor
     constructor() ERC20("Sky Ascent Coin", "SKYC") Ownable(msg.sender) {
@@ -214,6 +222,59 @@ contract SkyAscentGame is ERC20, Ownable, ReentrancyGuard {
         }
     }
 
+    // Weekly rewards distribution function
+    function claimWeeklyRewards(uint256 _week) external onlyOwner nonReentrant {
+        require(!weeklyRewardsClaimed[_week], "Weekly rewards already claimed");
+        require(_week < getCurrentWeek(), "Cannot claim rewards for current week");
+        
+        LeaderboardEntry[] storage leaderboard = weeklyLeaderboards[_week];
+        require(leaderboard.length > 0, "No entries for this week");
+        
+        uint256 totalRewards = 0;
+        address[] memory winners = new address[](leaderboard.length > 10 ? 10 : leaderboard.length);
+        uint256[] memory rewards = new uint256[](leaderboard.length > 10 ? 10 : leaderboard.length);
+        
+        // Distribute rewards to top players
+        for (uint256 i = 0; i < winners.length; i++) {
+            address player = leaderboard[i].player;
+            uint256 reward;
+            
+            if (i == 0) {
+                reward = FIRST_PLACE_REWARD;  // 350 SKYC
+            } else if (i == 1) {
+                reward = SECOND_PLACE_REWARD; // 200 SKYC
+            } else if (i == 2) {
+                reward = THIRD_PLACE_REWARD;  // 100 SKYC
+            } else {
+                reward = TOP_10_REWARD;       // 15 SKYC for places 4-10
+            }
+            
+            winners[i] = player;
+            rewards[i] = reward;
+            totalRewards += reward;
+        }
+        
+        // Check treasury has enough funds
+        require(balanceOf(address(this)) >= totalRewards, "Insufficient treasury balance");
+        
+        // Distribute rewards
+        for (uint256 i = 0; i < winners.length; i++) {
+            if (rewards[i] > 0) {
+                _transfer(address(this), winners[i], rewards[i]);
+            }
+        }
+        
+        // Mark as claimed
+        weeklyRewardsClaimed[_week] = true;
+        
+        emit WeeklyRewardsClaimed(_week, winners, rewards);
+    }
+    
+    // Check if weekly rewards have been claimed
+    function areWeeklyRewardsClaimed(uint256 _week) external view returns (bool) {
+        return weeklyRewardsClaimed[_week];
+    }
+    
     // Treasury management functions
     function getTreasuryBalance() external view returns (uint256) {
         return balanceOf(address(this));

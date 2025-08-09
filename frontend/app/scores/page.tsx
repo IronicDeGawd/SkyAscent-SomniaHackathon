@@ -5,6 +5,7 @@ import { useApp } from '../providers'
 import Link from 'next/link'
 import { GAME_CONTRACT_ABI, getGameContractAddress, type LeaderboardEntry, type GameSession } from '../../utils/blockchain'
 import { useReadContract, useAccount } from 'wagmi'
+import { leaderboardCache } from '../../utils/cache'
 
 export default function ScoresPage() {
   const { user } = useApp()
@@ -24,15 +25,18 @@ export default function ScoresPage() {
     query: { enabled: !!contractAddress }
   })
 
-  // Get weekly leaderboard
+  // Generate cache key for scores page (longer cache since it's full leaderboard)
+  const scoresCacheKey = currentWeek ? `scores-full-week-${currentWeek}` : ""
+  
+  // Get weekly leaderboard with caching
   const { data: weeklyLeaderboardData, isLoading: leaderboardLoading } = useReadContract({
     address: contractAddress as `0x${string}`,
     abi: GAME_CONTRACT_ABI,
     functionName: 'getWeeklyTopScores',
     args: currentWeek ? [currentWeek, BigInt(50)] : undefined,
     query: { 
-      enabled: !!contractAddress && currentWeek !== undefined,
-      refetchInterval: 30000, // Refetch every 30 seconds
+      enabled: !!contractAddress && currentWeek !== undefined && !leaderboardCache.get(scoresCacheKey),
+      refetchInterval: false, // Disable auto-refetch, using cache instead
     }
   })
 
@@ -48,8 +52,19 @@ export default function ScoresPage() {
     }
   })
 
-  // Update leaderboard data
+  // Update leaderboard data with caching
   useEffect(() => {
+    if (!scoresCacheKey) return
+    
+    // First, try to get from cache
+    const cachedScoresData = leaderboardCache.get<LeaderboardEntry[]>(scoresCacheKey)
+    if (cachedScoresData) {
+      setWeeklyLeaderboard(cachedScoresData)
+      setIsLoading(activeTab === 'history' && historyLoading) // Only show loading for history if that tab is active
+      return
+    }
+    
+    // If not in cache, use fresh blockchain data
     setIsLoading(leaderboardLoading || (activeTab === 'history' && historyLoading))
     
     if (weeklyLeaderboardData) {
@@ -70,7 +85,10 @@ export default function ScoresPage() {
         };
       })
       
+      // Cache the full scores data for 5 minutes
+      leaderboardCache.set(scoresCacheKey, formattedLeaderboard, 5)
       setWeeklyLeaderboard(formattedLeaderboard)
+      
     } else if (!leaderboardLoading) {
       console.log("📋 Scores page - No leaderboard data available", {
         contractAddress,
@@ -80,7 +98,7 @@ export default function ScoresPage() {
       })
       setWeeklyLeaderboard([])
     }
-  }, [weeklyLeaderboardData, leaderboardLoading, currentWeek, contractAddress, historyLoading, activeTab])
+  }, [weeklyLeaderboardData, leaderboardLoading, currentWeek, contractAddress, historyLoading, activeTab, scoresCacheKey])
 
   // Update player history data
   useEffect(() => {

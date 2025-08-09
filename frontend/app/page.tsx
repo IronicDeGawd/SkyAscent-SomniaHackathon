@@ -7,6 +7,7 @@ import Image from "next/image";
 import { GAME_CONTRACT_ABI, getGameContractAddress } from "../utils/blockchain";
 import { WalletConnection } from "../components/WalletConnection";
 import { useReadContract, useAccount } from "wagmi";
+import { leaderboardCache } from "../utils/cache";
 
 export default function HomePage() {
   const { user, isLoading, isAuthenticated, walletAddress } =
@@ -19,6 +20,7 @@ export default function HomePage() {
   });
   const [weeklyLeaderboard, setWeeklyLeaderboard] = useState<Array<{ player: string; score: number }>>([]);
   const [leaderboardLoading, setLeaderboardLoading] = useState(true);
+  const [_leaderboardCacheKey, setLeaderboardCacheKey] = useState<string>("");
 
   const contractAddress = getGameContractAddress();
 
@@ -30,15 +32,18 @@ export default function HomePage() {
     query: { enabled: !!contractAddress }
   });
 
-  // Get weekly leaderboard
+  // Generate cache key based on current week
+  const cacheKey = currentWeek ? `leaderboard-week-${currentWeek}` : "";
+  
+  // Get weekly leaderboard with caching
   const { data: weeklyLeaderboardData, isLoading: leaderboardDataLoading } = useReadContract({
     address: contractAddress as `0x${string}`,
     abi: GAME_CONTRACT_ABI,
     functionName: 'getWeeklyTopScores',
     args: currentWeek ? [currentWeek, BigInt(10)] : undefined,
     query: { 
-      enabled: !!contractAddress && currentWeek !== undefined,
-      refetchInterval: 30000, // Refetch every 30 seconds
+      enabled: !!contractAddress && currentWeek !== undefined && !leaderboardCache.get(cacheKey),
+      refetchInterval: false, // Disable auto-refetch, we handle caching manually
     }
   });
 
@@ -79,8 +84,20 @@ export default function HomePage() {
     }
   }, [playerStatsData, contractAddress, userWalletAddress]);
 
-  // Update leaderboard data
+  // Update leaderboard data with caching
   useEffect(() => {
+    if (!cacheKey) return;
+    
+    // First, try to get from cache
+    const cachedData = leaderboardCache.get<Array<{ player: string; score: number; altitude: number; timestamp: number }>>(cacheKey);
+    if (cachedData) {
+      setWeeklyLeaderboard(cachedData);
+      setLeaderboardLoading(false);
+      setLeaderboardCacheKey(cacheKey);
+      return;
+    }
+    
+    // If not in cache and we have fresh data from blockchain
     setLeaderboardLoading(leaderboardDataLoading);
     
     if (weeklyLeaderboardData) {
@@ -101,7 +118,11 @@ export default function HomePage() {
         };
       });
       
+      // Cache the formatted data for 5 minutes
+      leaderboardCache.set(cacheKey, formattedLeaderboard, 5);
       setWeeklyLeaderboard(formattedLeaderboard);
+      setLeaderboardCacheKey(cacheKey);
+      
     } else if (!leaderboardDataLoading) {
       console.log("📋 No leaderboard data available", {
         contractAddress,
@@ -111,7 +132,7 @@ export default function HomePage() {
       });
       setWeeklyLeaderboard([]);
     }
-  }, [weeklyLeaderboardData, leaderboardDataLoading, currentWeek, contractAddress]);
+  }, [weeklyLeaderboardData, leaderboardDataLoading, currentWeek, contractAddress, cacheKey]);
 
   if (isLoading) {
     return (

@@ -14,6 +14,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useAccount, useConnect, useDisconnect, useReadContract } from "wagmi";
 import { wagmiConfig } from "../utils/wagmi";
 import { sdk } from "@farcaster/miniapp-sdk";
+import { leaderboardCache } from "../utils/cache";
 
 interface User {
   address: string;
@@ -33,6 +34,7 @@ interface AppContextType {
   signOut: () => void;
   refreshPlayerStats: () => Promise<void>;
   setWalletAddress: (address: string | null) => void;
+  invalidateLeaderboardCache: () => void;
 }
 
 const AppContext = createContext<AppContextType>({
@@ -46,6 +48,7 @@ const AppContext = createContext<AppContextType>({
   signOut: () => {},
   refreshPlayerStats: async () => {},
   setWalletAddress: () => {},
+  invalidateLeaderboardCache: () => {},
 });
 
 // Create a client for react-query
@@ -214,6 +217,11 @@ function InnerProviders({ children }: { children: ReactNode }) {
     setPlayerStats(null);
     setWalletAddress(null);
   };
+  
+  const invalidateLeaderboardCache = useCallback(() => {
+    console.log("🧹 Invalidating leaderboard cache after game completion");
+    leaderboardCache.invalidateAll();
+  }, []);
 
   const value = {
     user,
@@ -226,6 +234,7 @@ function InnerProviders({ children }: { children: ReactNode }) {
     signOut,
     refreshPlayerStats,
     setWalletAddress,
+    invalidateLeaderboardCache,
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

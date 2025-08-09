@@ -58,18 +58,23 @@ export default function HomePage() {
   useEffect(() => {
     if (playerStatsData) {
       const [totalGames, bestScore, totalTokens] = playerStatsData as [bigint, bigint, bigint];
+      
+      // Convert totalTokens from wei (18 decimals) to readable format
+      const tokensInEther = Number(totalTokens) / Math.pow(10, 18);
+      
       console.log("📊 Player stats from blockchain:", {
         contractAddress,
         userWalletAddress,
         totalGames: Number(totalGames),
         bestScore: Number(bestScore), 
-        totalTokens: Number(totalTokens),
+        totalTokensRaw: Number(totalTokens),
+        totalTokensFormatted: tokensInEther,
       });
       
       setGameStats({
         totalGames: Number(totalGames),
         bestScore: Number(bestScore),
-        totalTokens: Number(totalTokens),
+        totalTokens: tokensInEther, // Store the formatted value
       });
     }
   }, [playerStatsData, contractAddress, userWalletAddress]);
@@ -359,8 +364,17 @@ export default function HomePage() {
             </div>
             <div className="flex justify-between mt-2 text-sm">
               <span className="text-yellow-300">
-                🪙 SKYC: {gameStats.totalTokens}
+                🪙 SKYC: {gameStats.totalTokens.toLocaleString(undefined, {
+                  minimumFractionDigits: 0,
+                  maximumFractionDigits: 2
+                })}
               </span>
+            </div>
+            
+            {/* Wallet Management Section */}
+            <div className="mt-4 pt-3 border-t border-white/20">
+              <h3 className="text-sm font-medium mb-3 opacity-90">Wallet Management</h3>
+              <WalletConnection />
             </div>
           </div>
         )}

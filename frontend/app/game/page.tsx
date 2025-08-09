@@ -201,10 +201,30 @@ export default function GamePage() {
     ) {
       setSubmissionError(null);
 
+      // Check if game time meets minimum requirement before attempting blockchain submission
+      if (finalTime < 5) {
+        const funMessages = [
+          "🎈 Maybe play a little more to push scores to the blockchain! ⏱️",
+          "🚀 Fly a bit longer to earn your spot on the leaderboard! ⭐",  
+          "🎯 Need at least 5 seconds of flight time for blockchain glory! ⏰",
+          "☁️ Your balloon needs more sky time before landing on the blockchain! 🌟",
+          "⛽ Take your time and enjoy the flight - scores need 5+ seconds! 🎈"
+        ];
+        const randomMessage = funMessages[Math.floor(Math.random() * funMessages.length)];
+        
+        setSubmissionError(randomMessage);
+        console.log("Game time too short for blockchain submission:", {
+          finalTime,
+          minimumRequired: 5,
+          message: randomMessage
+        });
+        return; // Exit early, don't attempt blockchain submission
+      }
+
       try {
-        // Calculate expected tokens
+        // Calculate expected tokens - BALANCED ECONOMICS
         const expectedTokens =
-          Math.floor(finalScore / 100) + Math.floor(finalAltitude / 500);
+          Math.floor(finalScore / 1000) + Math.floor(finalAltitude / 500);
         setTokensEarned(expectedTokens);
 
         console.log("Submitting score to blockchain:", {

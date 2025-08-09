@@ -38,15 +38,19 @@ contract SkyAscentGame is ERC20, Ownable, ReentrancyGuard {
     event PlayerHistoryReset(address player);
     event GlobalReset();
 
-    // Constants
-    uint256 public constant TOKENS_PER_100_SCORE = 1 * 10 ** 18; // 1 SKYC per 100 score points
-    uint256 public constant TOKENS_PER_500_ALTITUDE = 1 * 10 ** 18; // 1 SKYC per 500 altitude
+    // Constants - BALANCED TOKEN ECONOMICS
+    uint256 public constant TOKENS_PER_1000_SCORE = 1 * 10 ** 18; // 1 SKYC per 1,000 score points (achievable)
+    uint256 public constant TOKENS_PER_500_ALTITUDE = 1 * 10 ** 18; // 1 SKYC per 500 altitude (achievable)
     uint256 public constant REVIVE_COST = 50 * 10 ** 18; // 50 SKYC for revive
+    uint256 public constant MAX_TOTAL_SUPPLY = 10000000 * 10 ** 18; // 10 million SKYC max supply
+    uint256 public constant TREASURY_RESERVE = 9000000 * 10 ** 18; // 9 million for rewards treasury
 
     // Constructor
     constructor() ERC20("Sky Ascent Coin", "SKYC") Ownable(msg.sender) {
-        // Mint initial supply to deployer for rewards distribution
-        _mint(msg.sender, 1000000 * 10 ** 18); // 1 million SKYC tokens
+        // Mint maximum supply to contract for proper treasury management
+        _mint(address(this), MAX_TOTAL_SUPPLY); // 10 million SKYC tokens to contract
+        // Transfer 1 million to deployer for initial distribution/testing
+        _transfer(address(this), msg.sender, 1000000 * 10 ** 18);
     }
 
     function submitScore(
@@ -77,9 +81,13 @@ contract SkyAscentGame is ERC20, Ownable, ReentrancyGuard {
         uint256 currentWeek = getCurrentWeek();
         updateWeeklyLeaderboard(currentWeek, msg.sender, _score, _altitude);
 
-        // Calculate and award tokens
+        // Calculate and award tokens from treasury (NO MORE MINTING!)
         uint256 tokensEarned = calculateTokenReward(_score, _altitude);
-        _mint(msg.sender, tokensEarned);
+        if (tokensEarned > 0 && balanceOf(address(this)) >= tokensEarned) {
+            _transfer(address(this), msg.sender, tokensEarned);
+        } else {
+            tokensEarned = 0; // No tokens if treasury is empty
+        }
 
         emit GameCompleted(msg.sender, _score, _altitude, _gameTime);
         emit TokensEarned(msg.sender, tokensEarned);
@@ -93,7 +101,8 @@ contract SkyAscentGame is ERC20, Ownable, ReentrancyGuard {
         uint256 _score,
         uint256 _altitude
     ) internal pure returns (uint256) {
-        uint256 scoreTokens = (_score / 100) * TOKENS_PER_100_SCORE;
+        // BALANCED: Achievable token rewards for good gameplay
+        uint256 scoreTokens = (_score / 1000) * TOKENS_PER_1000_SCORE;
         uint256 altitudeTokens = (_altitude / 500) * TOKENS_PER_500_ALTITUDE;
         return scoreTokens + altitudeTokens;
     }
@@ -103,9 +112,9 @@ contract SkyAscentGame is ERC20, Ownable, ReentrancyGuard {
         uint256 _altitude,
         uint256 _gameTime
     ) internal pure returns (bool) {
-        // Basic validation rules
+        // FIXED: Realistic validation rules based on actual game analysis
         if (_gameTime < 5) return false; // Minimum 5 seconds
-        if (_score > _gameTime * 5000) return false; // Max 100 points per second
+        if (_score > _gameTime * 2000) return false; // Max 2000 points per second (realistic for game)
         if (_altitude > _gameTime * 50) return false; // Max 50 altitude per second
         return true;
     }
@@ -205,11 +214,22 @@ contract SkyAscentGame is ERC20, Ownable, ReentrancyGuard {
         }
     }
 
-    // Owner functions for token management
-    function mintTokens(address to, uint256 amount) external onlyOwner {
-        _mint(to, amount);
+    // Treasury management functions
+    function getTreasuryBalance() external view returns (uint256) {
+        return balanceOf(address(this));
     }
-
+    
+    function withdrawFromTreasury(address to, uint256 amount) external onlyOwner {
+        require(balanceOf(address(this)) >= amount, "Insufficient treasury balance");
+        _transfer(address(this), to, amount);
+    }
+    
+    function depositToTreasury(uint256 amount) external {
+        require(balanceOf(msg.sender) >= amount, "Insufficient balance");
+        _transfer(msg.sender, address(this), amount);
+    }
+    
+    // Emergency functions (no more unlimited minting!)
     function burnTokens(address from, uint256 amount) external onlyOwner {
         _burn(from, amount);
     }

@@ -61,7 +61,7 @@ class GameScene extends Phaser.Scene {
   private objectPool: Map<string, Phaser.Physics.Arcade.Sprite[]> = new Map();
 
   // New physics-based balloon system
-  private buoyancyForce = 80; // Base lift force when fuel available
+  private buoyancyForce = 25; // Base lift force when fuel available - realistic balloon physics
   private balloonMass = 1; // Balloon mass for physics calculations
   private airResistance = 0.98; // Air resistance factor (0.98 = 2% resistance)
   private terminalVelocity = 150; // Maximum fall speed
@@ -795,6 +795,19 @@ class GameScene extends Phaser.Scene {
     if (this.fuel <= 0) return;
 
     const balloonBody = this.balloon.body as Phaser.Physics.Arcade.Body;
+    
+    // Check boundaries before applying movement
+    const boundaryMargin = 50;
+    const leftBoundary = boundaryMargin;
+    const rightBoundary = this.cameras.main.width - boundaryMargin;
+    
+    // Prevent movement if at boundaries
+    if ((deltaX < 0 && this.balloon.x <= leftBoundary) || 
+        (deltaX > 0 && this.balloon.x >= rightBoundary)) {
+      balloonBody.setVelocityX(0);
+      return;
+    }
+    
     const moveForce = Phaser.Math.Clamp(deltaX * 2, -150, 150);
     balloonBody.setVelocityX(moveForce);
 
@@ -809,6 +822,17 @@ class GameScene extends Phaser.Scene {
 
     const moveForce = 120;
     const balloonBody = this.balloon.body as Phaser.Physics.Arcade.Body;
+    
+    // Check boundaries before applying movement
+    const boundaryMargin = 50;
+    const leftBoundary = boundaryMargin;
+    const rightBoundary = this.cameras.main.width - boundaryMargin;
+    
+    // Prevent movement if at boundaries
+    if ((direction === "left" && this.balloon.x <= leftBoundary) || 
+        (direction === "right" && this.balloon.x >= rightBoundary)) {
+      return; // Don't move or consume fuel if at boundary
+    }
 
     if (direction === "left") {
       balloonBody.setVelocityX(-moveForce);
@@ -929,15 +953,35 @@ class GameScene extends Phaser.Scene {
     if (this.shieldActive && time > this.shieldEndTime) {
       this.shieldActive = false;
       this.balloon.clearTint();
+      
+      // Safely destroy shield sprite with error handling
       if (this.shieldSprite) {
-        this.shieldSprite.destroy();
+        try {
+          // Check if sprite still exists and is not destroyed
+          if (this.shieldSprite.active && this.shieldSprite.scene) {
+            this.shieldSprite.destroy();
+          }
+        } catch (_error) {
+          console.warn("Error destroying shield sprite:", _error);
+        }
         this.shieldSprite = undefined;
       }
     }
 
-    // Update shield sprite position if active
+    // Update shield sprite position if active with error handling
     if (this.shieldActive && this.shieldSprite) {
-      this.shieldSprite.setPosition(this.balloon.x, this.balloon.y);
+      try {
+        // Check if sprite is still valid before updating position
+        if (this.shieldSprite.active && this.shieldSprite.scene) {
+          this.shieldSprite.setPosition(this.balloon.x, this.balloon.y);
+        } else {
+          // Sprite is invalid, clean it up
+          this.shieldSprite = undefined;
+        }
+      } catch (_error) {
+        console.warn("Error updating shield sprite position:", _error);
+        this.shieldSprite = undefined;
+      }
     }
   }
 
@@ -956,6 +1000,20 @@ class GameScene extends Phaser.Scene {
   updateBalloonPhysics(delta: number) {
     const balloonBody = this.balloon.body as Phaser.Physics.Arcade.Body;
     const deltaSeconds = delta / 1000;
+
+    // Screen boundaries - prevent balloon from going too far left/right
+    const boundaryMargin = 50;
+    const leftBoundary = boundaryMargin;
+    const rightBoundary = this.cameras.main.width - boundaryMargin;
+    
+    // Enforce horizontal boundaries
+    if (this.balloon.x < leftBoundary) {
+      this.balloon.x = leftBoundary;
+      balloonBody.setVelocityX(Math.max(0, balloonBody.velocity.x)); // Stop leftward movement
+    } else if (this.balloon.x > rightBoundary) {
+      this.balloon.x = rightBoundary;
+      balloonBody.setVelocityX(Math.min(0, balloonBody.velocity.x)); // Stop rightward movement
+    }
 
     // Get current velocity
     const currentVelocityY = balloonBody.velocity.y;
@@ -1019,11 +1077,10 @@ class GameScene extends Phaser.Scene {
       this.lastPowerupTime = time;
     }
 
-    // Spawn special environmental elements
-    if (Math.random() < 0.003) {
-      // 0.3% chance per frame
-      this.spawnEnvironmentalElement(time);
-    }
+    // Disabled environmental elements (red/green debug blocks)
+    // if (Math.random() < 0.003) {
+    //   this.spawnEnvironmentalElement(time);
+    // }
   }
 
   setupCollisions() {
@@ -1032,8 +1089,8 @@ class GameScene extends Phaser.Scene {
       this.obstacles,
       (_balloon, obstacle) => {
         const obstacleSprite = obstacle as Phaser.Physics.Arcade.Sprite;
-        const balloonBody = this.balloon.body as Phaser.Physics.Arcade.Body;
-        const obstacleBody = obstacleSprite.body as Phaser.Physics.Arcade.Body;
+        // const balloonBody = this.balloon.body as Phaser.Physics.Arcade.Body;
+        // const obstacleBody = obstacleSprite.body as Phaser.Physics.Arcade.Body;
 
         // Collision detected - removed debug logging for performance
 
@@ -1042,13 +1099,18 @@ class GameScene extends Phaser.Scene {
           this.createDamageParticles(this.balloon.x, this.balloon.y);
           this.gameOver();
         } else {
-          // Destroy obstacle when shielded
-          this.destroyObstacle(obstacle as Phaser.Physics.Arcade.Sprite);
-          this.score += 50;
-          this.gameCallbacks.current.onScoreUpdate(this.score);
+          try {
+            // Destroy obstacle when shielded
+            this.destroyObstacle(obstacle as Phaser.Physics.Arcade.Sprite);
+            this.score += 50;
+            this.gameCallbacks.current.onScoreUpdate(this.score);
 
-          // Visual feedback
-          this.cameras.main.shake(100, 0.02);
+            // Visual feedback
+            this.cameras.main.shake(100, 0.02);
+          } catch (_error) {
+            console.warn("Error handling shielded collision:", _error);
+            // Fallback: just continue game without processing the collision
+          }
         }
       }
     );
@@ -1063,24 +1125,17 @@ class GameScene extends Phaser.Scene {
   }
 
   spawnObstacle() {
-    const margin = 60;
-    const safeZoneRadius = 120; // Minimum distance from balloon
-    let x: number;
-
-    // Ensure obstacle doesn't spawn too close to balloon horizontally
-    do {
-      x = Phaser.Math.Between(margin, this.cameras.main.width - margin);
-    } while (Math.abs(x - this.balloon.x) < safeZoneRadius);
-
-    // Increased spawn distance for better reaction time
-    const y = this.balloon.y - 800 - Phaser.Math.Between(0, 300);
+    // Spawn only from left or right edges of screen
+    const spawnDirection = Math.random() < 0.5 ? "left" : "right";
+    const x = spawnDirection === "left" ? -50 : this.cameras.main.width + 50; // Off-screen edges
+    
+    // Spawn at balloon height with some variation
+    const y = this.balloon.y - Phaser.Math.Between(100, 400);
 
     const obstacleTypes = ["bird", "airplane", "ufo"];
     const weights = [0.5, 0.3, 0.2]; // Bird more common, UFO rare
     const obstacleType = this.weightedRandom(obstacleTypes, weights);
 
-    // Determine if spawning from right side and choose appropriate texture
-    const spawnDirection = x > this.cameras.main.centerX ? "right" : "left";
     let textureKey = obstacleType;
 
     // Use directional sprites for birds and airplanes when spawning from right
@@ -1143,12 +1198,43 @@ class GameScene extends Phaser.Scene {
 
   addObstacleMovement(obstacle: Phaser.Physics.Arcade.Sprite, type: string) {
     const obstacleBody = obstacle.body as Phaser.Physics.Arcade.Body;
-    const speedMultiplier = 1 + (this.difficultyLevel - 1) * 0.4;
+    
+    // Random speed burst system: 25% chance for 1.5x-2x speed boost instead of uniform multipliers
+    const hasSpeedBurst = Math.random() < 0.25;
+    const speedBurstMultiplier = hasSpeedBurst ? Phaser.Math.FloatBetween(1.5, 2.0) : 1.0;
+    
+    // Add visual indicator for fast obstacles
+    if (hasSpeedBurst) {
+      obstacle.setTint(0xffaa00); // Orange tint for fast obstacles
+      
+      // Add particle trail effect for fast obstacles
+      if (this.add.particles) {
+        const particles = this.add.particles(obstacle.x, obstacle.y, 'cloud_fallback', {
+          scale: { start: 0.1, end: 0.0 },
+          alpha: { start: 0.5, end: 0.0 },
+          speed: { min: 20, max: 40 },
+          lifespan: 300,
+          quantity: 1,
+          frequency: 50,
+        });
+        
+        // Follow the obstacle
+        particles.startFollow(obstacle);
+        
+        // Clean up particles when obstacle is destroyed
+        obstacle.setData('particles', particles);
+      }
+    }
 
+    // Get spawn direction from obstacle data
+    const spawnDirection = obstacle.getData("direction");
+    
     switch (type) {
       case "bird":
-        // Smooth sine wave movement
-        const birdSpeed = Phaser.Math.Between(-60, 60) * speedMultiplier;
+        // Move toward center from spawn edge
+        const birdBaseSpeed = spawnDirection === "left" ? 
+          Phaser.Math.Between(40, 80) : Phaser.Math.Between(-80, -40);
+        const birdSpeed = birdBaseSpeed * speedBurstMultiplier;
         obstacleBody.setVelocityX(birdSpeed);
         this.tweens.add({
           targets: obstacle,
@@ -1161,19 +1247,28 @@ class GameScene extends Phaser.Scene {
         break;
 
       case "airplane":
-        // Fast horizontal movement
-        const airplaneSpeed = Phaser.Math.Between(-120, 120) * speedMultiplier;
+        // Move toward center from spawn edge
+        const airplaneBaseSpeed = spawnDirection === "left" ? 
+          Phaser.Math.Between(80, 140) : Phaser.Math.Between(-140, -80);
+        const airplaneSpeed = airplaneBaseSpeed * speedBurstMultiplier;
         obstacleBody.setVelocityX(airplaneSpeed);
         obstacle.setAngle(airplaneSpeed > 0 ? 5 : -5);
         break;
 
       case "ufo":
-        // Erratic movement
+        // Initial movement toward center, then erratic
+        const initialUfoSpeed = spawnDirection === "left" ? 
+          Phaser.Math.Between(60, 100) : Phaser.Math.Between(-100, -60);
+        obstacleBody.setVelocityX(initialUfoSpeed * speedBurstMultiplier);
+        
+        // Erratic movement with direction bias
         this.time.addEvent({
           delay: 1000,
           callback: () => {
             if (obstacle.active) {
-              const newSpeed = Phaser.Math.Between(-100, 100) * speedMultiplier;
+              const ufoBaseSpeed = spawnDirection === "left" ? 
+                Phaser.Math.Between(20, 120) : Phaser.Math.Between(-120, -20);
+              const newSpeed = ufoBaseSpeed * speedBurstMultiplier;
               obstacleBody.setVelocityX(newSpeed);
 
               // Teleport effect
@@ -1202,7 +1297,8 @@ class GameScene extends Phaser.Scene {
   spawnPowerup() {
     const margin = 60;
     const x = Phaser.Math.Between(margin, this.cameras.main.width - margin);
-    const y = this.balloon.y - 400 - Phaser.Math.Between(0, 150);
+    // Always spawn from top of screen (off-screen) and drop down
+    const y = this.balloon.y - this.cameras.main.height - 100;
 
     // NEW: Enhanced power-up types with environmental consideration
     const powerupTypes = this.getEnvironmentalPowerups();
@@ -1241,11 +1337,15 @@ class GameScene extends Phaser.Scene {
 
     this.powerups.add(powerup);
 
-    // Floating animation
+    // Add downward movement so powerups drop from top of screen
+    const powerupBodyMovement = powerup.body as Phaser.Physics.Arcade.Body;
+    powerupBodyMovement.setVelocityY(80); // Slow downward drift
+
+    // Floating animation (reduced amplitude since it's now falling)
     this.tweens.add({
       targets: powerup,
-      y: powerup.y - 15,
-      duration: 1000,
+      y: powerup.y - 10, // Reduced floating range
+      duration: 1500,
       yoyo: true,
       repeat: -1,
       ease: "Sine.easeInOut",
@@ -1319,29 +1419,43 @@ class GameScene extends Phaser.Scene {
     this.shieldEndTime = this.time.now + 5000;
     this.balloon.setTint(0x0088ff);
 
-    // Create shield visual
+    // Create shield visual with error handling
     if (!this.shieldSprite) {
-      const textureKey = this.textures.exists("shield")
-        ? "shield"
-        : "shield_fallback";
-      this.shieldSprite = this.add.sprite(
-        this.balloon.x,
-        this.balloon.y,
-        textureKey
-      );
-      this.shieldSprite.setScale(0.5);
-      this.shieldSprite.setAlpha(0.5);
-      this.shieldSprite.setDepth(8);
+      try {
+        const textureKey = this.textures.exists("shield")
+          ? "shield"
+          : "shield_fallback";
+        
+        // Verify texture exists before creating sprite
+        if (this.textures.exists(textureKey)) {
+          this.shieldSprite = this.add.sprite(
+            this.balloon.x,
+            this.balloon.y,
+            textureKey
+          );
+          this.shieldSprite.setScale(0.5);
+          this.shieldSprite.setAlpha(0.5);
+          this.shieldSprite.setDepth(8);
 
-      this.tweens.add({
-        targets: this.shieldSprite,
-        scaleX: 0.6,
-        scaleY: 0.6,
-        alpha: 0.1,
-        duration: 1000,
-        yoyo: true,
-        repeat: -1,
-      });
+          this.tweens.add({
+            targets: this.shieldSprite,
+            scaleX: 0.6,
+            scaleY: 0.6,
+            alpha: 0.1,
+            duration: 1000,
+            yoyo: true,
+            repeat: -1,
+            ease: "Sine.easeInOut",
+          });
+        } else {
+          console.warn("Shield texture not available, shield visual disabled");
+          // Still activate shield effect without visual
+        }
+      } catch (error) {
+        console.error("Failed to create shield sprite:", error);
+        // Continue with shield active but no visual
+        this.shieldSprite = undefined;
+      }
     }
   }
 
@@ -1541,6 +1655,12 @@ class GameScene extends Phaser.Scene {
   }
 
   destroyObstacle(obstacle: Phaser.Physics.Arcade.Sprite) {
+    // Clean up particle effects from speed burst obstacles
+    const particles = obstacle.getData('particles');
+    if (particles) {
+      particles.destroy();
+    }
+
     // Explosion effect
     for (let i = 0; i < 6; i++) {
       const particle = this.add.circle(obstacle.x, obstacle.y, 3, 0xff6600);
@@ -1767,7 +1887,7 @@ class GameScene extends Phaser.Scene {
 
   updateClouds() {
     // Spawn new clouds dynamically as balloon ascends
-    const spawnChance = 0.015; // 1.5% chance per frame
+    const spawnChance = 0.025; // 2.5% chance per frame - increased cloud spawning
 
     if (Math.random() < spawnChance) {
       // Randomly choose layer to spawn new cloud
@@ -1778,11 +1898,11 @@ class GameScene extends Phaser.Scene {
         | "middle"
         | "foreground";
 
-      // Spawn ahead of balloon
+      // Spawn ahead of balloon with larger spawn range
       this.createEnhancedCloud(
         layer,
         Phaser.Math.Between(-100, this.cameras.main.width + 100),
-        this.balloon.y - Phaser.Math.Between(800, 1200)
+        this.balloon.y - Phaser.Math.Between(1000, 1500) // Spawn clouds further ahead
       );
     }
 
@@ -1791,8 +1911,8 @@ class GameScene extends Phaser.Scene {
   }
 
   cleanupCloudLayers() {
-    const cleanupY = this.balloon.y + 500;
-    const maxClouds = { background: 15, middle: 20, foreground: 10 };
+    const cleanupY = this.balloon.y + 1000; // Increased cleanup distance to prevent clouds disappearing
+    const maxClouds = { background: 20, middle: 25, foreground: 15 }; // Increased cloud limits
 
     [
       { group: this.backgroundClouds, max: maxClouds.background },

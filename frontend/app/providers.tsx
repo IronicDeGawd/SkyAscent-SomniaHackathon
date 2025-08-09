@@ -120,18 +120,23 @@ function InnerProviders({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (playerStatsData && wagmiAddress) {
       const [totalGames, bestScore, totalTokens] = playerStatsData as [bigint, bigint, bigint];
+      
+      // Convert totalTokens from wei (18 decimals) to readable format
+      const tokensInEther = Number(totalTokens) / Math.pow(10, 18);
+      
       console.log("📊 Provider - Player stats from blockchain:", {
         contractAddress,
         walletAddress: wagmiAddress,
         totalGames: Number(totalGames),
         bestScore: Number(bestScore), 
-        totalTokens: Number(totalTokens),
+        totalTokensRaw: Number(totalTokens),
+        totalTokensFormatted: tokensInEther,
       });
       
       setPlayerStats({
         totalGames: Number(totalGames),
         bestScore: Number(bestScore),
-        totalTokens: Number(totalTokens),
+        totalTokens: tokensInEther, // Store the formatted value
       });
     } else {
       setPlayerStats(null);

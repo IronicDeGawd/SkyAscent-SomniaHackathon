@@ -11,21 +11,22 @@ export function WalletConnection() {
   const { disconnect } = useDisconnect();
   const { setWalletAddress, refreshPlayerStats } = useApp();
   const [isFarcaster, setIsFarcaster] = useState(false);
-  
+
   // Detect if we're in Farcaster environment
   useEffect(() => {
     const checkFarcaster = () => {
       // Check if we're in Farcaster iframe or app
-      const isInFarcaster = 
+      const isInFarcaster =
         window.location !== window.parent.location || // In iframe
-        window.navigator.userAgent.includes('Farcaster') ||
-        document.referrer.includes('farcaster') ||
-        window.location.href.includes('frame') ||
-        typeof window !== 'undefined' && !!(window as unknown as { farcasterSDK?: unknown }).farcasterSDK;
-      
+        window.navigator.userAgent.includes("Farcaster") ||
+        document.referrer.includes("farcaster") ||
+        window.location.href.includes("frame") ||
+        (typeof window !== "undefined" &&
+          !!(window as unknown as { farcasterSDK?: unknown }).farcasterSDK);
+
       setIsFarcaster(isInFarcaster);
     };
-    
+
     checkFarcaster();
   }, []);
 
@@ -43,14 +44,6 @@ export function WalletConnection() {
   if (isConnected) {
     return (
       <div className="space-y-4">
-        {/* Connection Status */}
-        <div className="text-center">
-          <div className="inline-flex items-center px-3 py-1 rounded-full text-sm bg-green-500/20 text-green-400 mb-3">
-            <div className="w-2 h-2 bg-green-400 rounded-full mr-2 animate-pulse"></div>
-            Wallet Connected
-          </div>
-        </div>
-        
         {/* Action Buttons */}
         <div className="grid grid-cols-1 gap-3">
           <button
@@ -73,22 +66,23 @@ export function WalletConnection() {
   const getPreferredConnector = () => {
     if (isFarcaster) {
       // In Farcaster, prefer Farcaster connector if available
-      const farcasterConnector = connectors.find(c => 
-        c.name.toLowerCase().includes('farcaster') ||
-        c.id.toLowerCase().includes('farcaster')
+      const farcasterConnector = connectors.find(
+        (c) =>
+          c.name.toLowerCase().includes("farcaster") ||
+          c.id.toLowerCase().includes("farcaster")
       );
       if (farcasterConnector) return farcasterConnector;
     }
-    
+
     // Otherwise, prefer MetaMask or first available connector
-    const metamaskConnector = connectors.find(c => 
-      c.name.toLowerCase().includes('metamask')
+    const metamaskConnector = connectors.find((c) =>
+      c.name.toLowerCase().includes("metamask")
     );
     return metamaskConnector || connectors[0];
   };
-  
+
   const preferredConnector = getPreferredConnector();
-  
+
   if (!preferredConnector) {
     return (
       <div className="text-center p-4">
@@ -97,7 +91,7 @@ export function WalletConnection() {
       </div>
     );
   }
-  
+
   return (
     <div className="space-y-4">
       {/* Connection Instructions */}
@@ -108,7 +102,7 @@ export function WalletConnection() {
           <p>🔗 Connect your wallet to save progress and earn tokens</p>
         )}
       </div>
-      
+
       {/* Main Connect Button */}
       <div className="grid grid-cols-1 gap-3">
         <button
@@ -131,7 +125,7 @@ export function WalletConnection() {
             </>
           )}
         </button>
-        
+
         {/* Show alternative connectors if available */}
         {connectors.length > 1 && !isPending && (
           <details className="text-center">
@@ -140,24 +134,24 @@ export function WalletConnection() {
             </summary>
             <div className="mt-3 space-y-3">
               {connectors
-                .filter(connector => connector.uid !== preferredConnector.uid)
+                .filter((connector) => connector.uid !== preferredConnector.uid)
                 .map((connector) => (
-                <button
-                  key={connector.uid}
-                  onClick={() => connect({ connector })}
-                  className="w-full pixel-button text-lg mobile-ui-large mobile-touch-friendly px-6 py-4 text-white transition-all hover:scale-105"
-                  style={{
-                    backgroundColor: "#6366f1",
-                    borderColor: "#8b5cf6",
-                  }}
-                >
-                  🔗 Connect {connector.name}
-                </button>
-              ))}
+                  <button
+                    key={connector.uid}
+                    onClick={() => connect({ connector })}
+                    className="w-full pixel-button text-lg mobile-ui-large mobile-touch-friendly px-6 py-4 text-white transition-all hover:scale-105"
+                    style={{
+                      backgroundColor: "#6366f1",
+                      borderColor: "#8b5cf6",
+                    }}
+                  >
+                    🔗 Connect {connector.name}
+                  </button>
+                ))}
             </div>
           </details>
         )}
-        
+
         <FaucetButton />
       </div>
     </div>

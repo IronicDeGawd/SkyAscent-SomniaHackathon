@@ -4,12 +4,14 @@ import { useState, useEffect } from "react";
 import { useApp } from "./providers";
 import Link from "next/link";
 import Image from "next/image";
-import { blockchainManager } from "../utils/blockchain";
+import { GAME_CONTRACT_ABI, getGameContractAddress } from "../utils/blockchain";
 import { WalletConnection } from "../components/WalletConnection";
+import { useReadContract, useAccount } from "wagmi";
 
 export default function HomePage() {
-  const { user, isLoading, isAuthenticated, playerStats, walletAddress } =
+  const { user, isLoading, isAuthenticated, walletAddress } =
     useApp();
+  const { address: userWalletAddress } = useAccount();
   const [gameStats, setGameStats] = useState({
     totalGames: 0,
     bestScore: 0,
@@ -18,34 +20,93 @@ export default function HomePage() {
   const [weeklyLeaderboard, setWeeklyLeaderboard] = useState<Array<{ player: string; score: number }>>([]);
   const [leaderboardLoading, setLeaderboardLoading] = useState(true);
 
+  const contractAddress = getGameContractAddress();
+
+  // Get current week for leaderboard query
+  const { data: currentWeek } = useReadContract({
+    address: contractAddress as `0x${string}`,
+    abi: GAME_CONTRACT_ABI,
+    functionName: 'getCurrentWeek',
+    query: { enabled: !!contractAddress }
+  });
+
+  // Get weekly leaderboard
+  const { data: weeklyLeaderboardData, isLoading: leaderboardDataLoading } = useReadContract({
+    address: contractAddress as `0x${string}`,
+    abi: GAME_CONTRACT_ABI,
+    functionName: 'getWeeklyTopScores',
+    args: currentWeek ? [currentWeek, BigInt(10)] : undefined,
+    query: { 
+      enabled: !!contractAddress && currentWeek !== undefined,
+      refetchInterval: 30000, // Refetch every 30 seconds
+    }
+  });
+
+  // Get player stats if wallet is connected
+  const { data: playerStatsData } = useReadContract({
+    address: contractAddress as `0x${string}`,
+    abi: GAME_CONTRACT_ABI,
+    functionName: 'getPlayerStats',
+    args: userWalletAddress ? [userWalletAddress] : undefined,
+    query: { 
+      enabled: !!contractAddress && !!userWalletAddress,
+      refetchInterval: 10000, // Refetch every 10 seconds
+    }
+  });
+
+  // Update player stats from blockchain data
   useEffect(() => {
-    if (playerStats) {
+    if (playerStatsData) {
+      const [totalGames, bestScore, totalTokens] = playerStatsData as [bigint, bigint, bigint];
+      console.log("📊 Player stats from blockchain:", {
+        contractAddress,
+        userWalletAddress,
+        totalGames: Number(totalGames),
+        bestScore: Number(bestScore), 
+        totalTokens: Number(totalTokens),
+      });
+      
       setGameStats({
-        totalGames: playerStats.totalGames,
-        bestScore: playerStats.bestScore,
-        totalTokens: playerStats.totalTokens,
+        totalGames: Number(totalGames),
+        bestScore: Number(bestScore),
+        totalTokens: Number(totalTokens),
       });
     }
-  }, [playerStats]);
+  }, [playerStatsData, contractAddress, userWalletAddress]);
 
-  // Load weekly leaderboard
+  // Update leaderboard data
   useEffect(() => {
-    const loadLeaderboard = async () => {
-      setLeaderboardLoading(true);
-      try {
-        const leaderboard = await blockchainManager.getWeeklyLeaderboard(3);
-        setWeeklyLeaderboard(leaderboard);
-      } catch (error) {
-        console.error("Failed to load leaderboard:", error);
-        // Fallback to demo data
-        setWeeklyLeaderboard([]);
-      } finally {
-        setLeaderboardLoading(false);
-      }
-    };
-
-    loadLeaderboard();
-  }, []);
+    setLeaderboardLoading(leaderboardDataLoading);
+    
+    if (weeklyLeaderboardData) {
+      console.log("🏆 Leaderboard data from blockchain:", {
+        contractAddress,
+        currentWeek: Number(currentWeek),
+        entriesCount: (weeklyLeaderboardData as unknown[]).length,
+        rawData: weeklyLeaderboardData
+      });
+      
+      const formattedLeaderboard = (weeklyLeaderboardData as unknown[]).map((entry: unknown) => {
+        const typedEntry = entry as { player: string; score: bigint; altitude: bigint; timestamp: bigint };
+        return {
+          player: typedEntry.player,
+          score: Number(typedEntry.score),
+          altitude: Number(typedEntry.altitude),
+          timestamp: Number(typedEntry.timestamp) * 1000, // Convert to milliseconds
+        };
+      });
+      
+      setWeeklyLeaderboard(formattedLeaderboard);
+    } else if (!leaderboardDataLoading) {
+      console.log("📋 No leaderboard data available", {
+        contractAddress,
+        currentWeek: Number(currentWeek),
+        hasContract: !!contractAddress,
+        hasCurrentWeek: currentWeek !== undefined
+      });
+      setWeeklyLeaderboard([]);
+    }
+  }, [weeklyLeaderboardData, leaderboardDataLoading, currentWeek, contractAddress]);
 
   if (isLoading) {
     return (

@@ -17,7 +17,7 @@ export const metadata: Metadata = {
   description:
     "Navigate your balloon through obstacles, collect powerups, and compete on blockchain leaderboards",
   icons: {
-    icon: "/logo.ico",
+    icon: "/favicon.ico",
     apple: "/logo.png",
   },
   openGraph: {
@@ -50,7 +50,7 @@ export default function RootLayout({
         />
         <meta
           name="fc:miniapp"
-          content='{"version":"1","name":"Sky Ascent","iconUrl":"https://your-vercel-url.vercel.app/logo.png","homeUrl":"https://your-vercel-url.vercel.app","imageUrl":"https://your-vercel-url.vercel.app/logo.png","button":{"text":"🎈 Play Now","action":"play"}}'
+          content='{"version":"1","name":"Sky Ascent","iconUrl":"https://sky-ascent-somnia-hackathon.vercel.app/logo.png","homeUrl":"https://sky-ascent-somnia-hackathon.vercel.app","imageUrl":"https://sky-ascent-somnia-hackathon.vercel.app/logo.png","button":{"text":"🎈 Play Now","action":"play"}}'
         />
       </head>
       <body className={`${pixelifySans.variable} font-pixelify`}>

@@ -3,61 +3,117 @@
 import { useState, useEffect } from 'react'
 import { useApp } from '../providers'
 import Link from 'next/link'
-import { blockchainManager, type LeaderboardEntry, type GameSession } from '../../utils/blockchain'
+import { GAME_CONTRACT_ABI, getGameContractAddress, type LeaderboardEntry, type GameSession } from '../../utils/blockchain'
+import { useReadContract, useAccount } from 'wagmi'
 
 export default function ScoresPage() {
   const { user } = useApp()
+  const { address: userWalletAddress } = useAccount()
   const [activeTab, setActiveTab] = useState<'weekly' | 'history'>('weekly')
   const [weeklyLeaderboard, setWeeklyLeaderboard] = useState<LeaderboardEntry[]>([])
   const [playerHistory, setPlayerHistory] = useState<GameSession[]>([])
   const [isLoading, setIsLoading] = useState(true)
 
-  useEffect(() => {
-    const loadScores = async () => {
-      try {
-        setIsLoading(true)
-        
-        // Load weekly leaderboard from Somnia blockchain
-        const leaderboard = await blockchainManager.getWeeklyLeaderboard(50)
-        setWeeklyLeaderboard(leaderboard)
+  const contractAddress = getGameContractAddress()
 
-        // Load player history if user is authenticated and has wallet
-        if (user && blockchainManager.isWalletConnected()) {
-          const currentAccount = await blockchainManager.getCurrentAccount()
-          if (currentAccount) {
-            const history = await blockchainManager.getPlayerHistory(currentAccount, 20)
-            setPlayerHistory(history)
-          } else {
-            setPlayerHistory([])
-          }
-        } else {
-          // Clear history for unauthenticated users
-          setPlayerHistory([])
-        }
+  // Get current week for leaderboard query  
+  const { data: currentWeek } = useReadContract({
+    address: contractAddress as `0x${string}`,
+    abi: GAME_CONTRACT_ABI,
+    functionName: 'getCurrentWeek',
+    query: { enabled: !!contractAddress }
+  })
 
-        setIsLoading(false)
-      } catch (error) {
-        console.error('Failed to load scores from blockchain:', error)
-        
-        // Fallback to mock data on error
-        setWeeklyLeaderboard([
-          { player: '0x1234...5678', score: 15000, altitude: 2500, timestamp: Date.now() - 3600000 },
-          { player: '0xabcd...efgh', score: 12500, altitude: 2000, timestamp: Date.now() - 7200000 },
-          { player: '0x9876...4321', score: 10000, altitude: 1800, timestamp: Date.now() - 10800000 },
-        ])
-
-        setPlayerHistory([
-          { score: 8500, altitude: 1500, gameTime: 180, timestamp: Date.now() - 86400000, player: '0x1234...5678' },
-          { score: 6200, altitude: 1200, gameTime: 150, timestamp: Date.now() - 172800000, player: '0x1234...5678' },
-          { score: 4800, altitude: 900, gameTime: 120, timestamp: Date.now() - 259200000, player: '0x1234...5678' },
-        ])
-        
-        setIsLoading(false)
-      }
+  // Get weekly leaderboard
+  const { data: weeklyLeaderboardData, isLoading: leaderboardLoading } = useReadContract({
+    address: contractAddress as `0x${string}`,
+    abi: GAME_CONTRACT_ABI,
+    functionName: 'getWeeklyTopScores',
+    args: currentWeek ? [currentWeek, BigInt(50)] : undefined,
+    query: { 
+      enabled: !!contractAddress && currentWeek !== undefined,
+      refetchInterval: 30000, // Refetch every 30 seconds
     }
+  })
 
-    loadScores()
-  }, [user])
+  // Get player history if wallet is connected
+  const { data: playerHistoryData, isLoading: historyLoading } = useReadContract({
+    address: contractAddress as `0x${string}`,
+    abi: GAME_CONTRACT_ABI,
+    functionName: 'getPlayerGameHistory',
+    args: userWalletAddress ? [userWalletAddress, BigInt(20)] : undefined,
+    query: { 
+      enabled: !!contractAddress && !!userWalletAddress,
+      refetchInterval: 10000, // Refetch every 10 seconds
+    }
+  })
+
+  // Update leaderboard data
+  useEffect(() => {
+    setIsLoading(leaderboardLoading || (activeTab === 'history' && historyLoading))
+    
+    if (weeklyLeaderboardData) {
+      console.log("🏆 Scores page - Leaderboard data from blockchain:", {
+        contractAddress,
+        currentWeek: Number(currentWeek),
+        entriesCount: (weeklyLeaderboardData as unknown[]).length,
+        rawData: weeklyLeaderboardData
+      })
+      
+      const formattedLeaderboard = (weeklyLeaderboardData as unknown[]).map((entry: unknown) => {
+        const typedEntry = entry as { player: string; score: bigint; altitude: bigint; timestamp: bigint };
+        return {
+          player: typedEntry.player,
+          score: Number(typedEntry.score),
+          altitude: Number(typedEntry.altitude),
+          timestamp: Number(typedEntry.timestamp) * 1000, // Convert to milliseconds
+        };
+      })
+      
+      setWeeklyLeaderboard(formattedLeaderboard)
+    } else if (!leaderboardLoading) {
+      console.log("📋 Scores page - No leaderboard data available", {
+        contractAddress,
+        currentWeek: Number(currentWeek),
+        hasContract: !!contractAddress,
+        hasCurrentWeek: currentWeek !== undefined
+      })
+      setWeeklyLeaderboard([])
+    }
+  }, [weeklyLeaderboardData, leaderboardLoading, currentWeek, contractAddress, historyLoading, activeTab])
+
+  // Update player history data
+  useEffect(() => {
+    if (playerHistoryData && userWalletAddress) {
+      console.log("🕐 Scores page - Player history from blockchain:", {
+        contractAddress,
+        userWalletAddress,
+        sessionsCount: (playerHistoryData as unknown[]).length,
+        rawData: playerHistoryData
+      })
+      
+      const formattedHistory = (playerHistoryData as unknown[]).map((session: unknown) => {
+        const typedSession = session as { score: bigint; altitude: bigint; gameTime: bigint; timestamp: bigint; player: string };
+        return {
+          score: Number(typedSession.score),
+          altitude: Number(typedSession.altitude),
+          gameTime: Number(typedSession.gameTime),
+          timestamp: Number(typedSession.timestamp) * 1000, // Convert to milliseconds
+          player: typedSession.player,
+        };
+      })
+      
+      setPlayerHistory(formattedHistory)
+    } else if (!historyLoading && userWalletAddress) {
+      console.log("📋 Scores page - No player history available", {
+        contractAddress,
+        userWalletAddress,
+        hasContract: !!contractAddress,
+        hasWallet: !!userWalletAddress
+      })
+      setPlayerHistory([])
+    }
+  }, [playerHistoryData, historyLoading, userWalletAddress, contractAddress])
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60)

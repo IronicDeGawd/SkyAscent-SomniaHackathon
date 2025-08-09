@@ -1,5 +1,4 @@
-import { ethers } from 'ethers'
-import { sdk } from '@farcaster/miniapp-sdk'
+// Removed unused imports - now using wagmi hooks directly in components
 
 // Somnia Network Configuration
 export const SOMNIA_CONFIG = {
@@ -12,7 +11,7 @@ export const SOMNIA_CONFIG = {
 
 // Contract addresses (to be updated after deployment)
 export const CONTRACT_ADDRESSES = {
-  GAME_CONTRACT: process.env.NEXT_PUBLIC_GAME_CONTRACT_ADDRESS || '0x7F52b899eE768943f700BC57A809A7F347AeAB7D',
+  GAME_CONTRACT: process.env.NEXT_PUBLIC_GAME_CONTRACT_ADDRESS,
   TOKEN_CONTRACT: process.env.NEXT_PUBLIC_TOKEN_CONTRACT_ADDRESS || ''
 }
 
@@ -34,18 +33,103 @@ export function getGameContractAddress(): string | null {
   return null
 }
 
-// Smart contract ABI (simplified for the game contract)
+// Smart contract ABI (JSON format for wagmi compatibility)
 export const GAME_CONTRACT_ABI = [
-  "function submitScore(uint256 _score, uint256 _altitude, uint256 _gameTime) external",
-  "function getWeeklyTopScores(uint256 _week, uint256 _limit) external view returns (tuple(address player, uint256 score, uint256 altitude, uint256 timestamp)[])",
-  "function getPlayerGameHistory(address _player, uint256 _limit) external view returns (tuple(uint256 score, uint256 altitude, uint256 gameTime, uint256 timestamp, address player)[])",
-  "function getPlayerStats(address _player) external view returns (uint256 totalGames, uint256 bestScore, uint256 totalTokens)",
-  "function purchaseRevive() external",
-  "function playerTokens(address) external view returns (uint256)",
-  "function getCurrentWeek() external view returns (uint256)",
-  "event GameCompleted(address indexed player, uint256 score, uint256 altitude, uint256 gameTime)",
-  "event TokensEarned(address indexed player, uint256 amount)"
-]
+  {
+    "type": "function",
+    "name": "submitScore",
+    "stateMutability": "nonpayable",
+    "inputs": [
+      {"name": "_score", "type": "uint256"},
+      {"name": "_altitude", "type": "uint256"},
+      {"name": "_gameTime", "type": "uint256"}
+    ],
+    "outputs": []
+  },
+  {
+    "type": "function",
+    "name": "getWeeklyTopScores",
+    "stateMutability": "view",
+    "inputs": [
+      {"name": "_week", "type": "uint256"},
+      {"name": "_limit", "type": "uint256"}
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "tuple[]",
+        "components": [
+          {"name": "player", "type": "address"},
+          {"name": "score", "type": "uint256"},
+          {"name": "altitude", "type": "uint256"},
+          {"name": "timestamp", "type": "uint256"}
+        ]
+      }
+    ]
+  },
+  {
+    "type": "function",
+    "name": "getPlayerGameHistory",
+    "stateMutability": "view",
+    "inputs": [
+      {"name": "_player", "type": "address"},
+      {"name": "_limit", "type": "uint256"}
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "tuple[]",
+        "components": [
+          {"name": "score", "type": "uint256"},
+          {"name": "altitude", "type": "uint256"},
+          {"name": "gameTime", "type": "uint256"},
+          {"name": "timestamp", "type": "uint256"},
+          {"name": "player", "type": "address"}
+        ]
+      }
+    ]
+  },
+  {
+    "type": "function",
+    "name": "getPlayerStats",
+    "stateMutability": "view",
+    "inputs": [
+      {"name": "_player", "type": "address"}
+    ],
+    "outputs": [
+      {"name": "totalGames", "type": "uint256"},
+      {"name": "bestScore", "type": "uint256"},
+      {"name": "totalTokens", "type": "uint256"}
+    ]
+  },
+  {
+    "type": "function",
+    "name": "purchaseRevive",
+    "stateMutability": "nonpayable",
+    "inputs": [],
+    "outputs": []
+  },
+  {
+    "type": "function",
+    "name": "getCurrentWeek",
+    "stateMutability": "view",
+    "inputs": [],
+    "outputs": [
+      {"name": "", "type": "uint256"}
+    ]
+  },
+  {
+    "type": "function",
+    "name": "balanceOf",
+    "stateMutability": "view",
+    "inputs": [
+      {"name": "account", "type": "address"}
+    ],
+    "outputs": [
+      {"name": "", "type": "uint256"}
+    ]
+  }
+] as const
 
 export interface LeaderboardEntry {
   player: string
@@ -68,229 +152,20 @@ export interface PlayerStats {
   totalTokens: number
 }
 
-export class BlockchainManager {
-  private provider: ethers.BrowserProvider | null = null
-  private gameContract: ethers.Contract | null = null
-  private signer: ethers.Signer | null = null
-
-  get isInitialized(): boolean {
-    return this.gameContract !== null && this.signer !== null
-  }
-
-  async connectWallet(): Promise<string | null> {
-    try {
-      // Use Farcaster's EIP-1193 provider instead of window.ethereum
-      const ethereumProvider = await sdk.wallet.getEthereumProvider()
-      if (!ethereumProvider) {
-        throw new Error('Farcaster wallet provider not available')
-      }
-
-      this.provider = new ethers.BrowserProvider(ethereumProvider)
-
-      // Request account access
-      await ethereumProvider.request({ method: 'eth_requestAccounts' })
-
-      // Switch to Somnia network if needed
-      await this.switchToSomniaWithProvider(ethereumProvider)
-
-      this.signer = await this.provider.getSigner()
-      const address = await this.signer.getAddress()
-
-      // Initialize contract with validated address
-      const contractAddress = getGameContractAddress()
-      if (contractAddress) {
-        this.gameContract = new ethers.Contract(
-          contractAddress,
-          GAME_CONTRACT_ABI,
-          this.signer
-        )
-        console.log('Game contract initialized with address:', contractAddress)
-      } else {
-        console.error('Cannot initialize game contract: invalid or missing contract address')
-        throw new Error('Game contract address not configured properly')
-      }
-
-      return address
-    } catch (error) {
-      console.error('Failed to connect wallet:', error)
-      throw error
-    }
-  }
-
-  async switchToSomniaWithProvider(provider: any): Promise<void> {
-    if (!provider) return
-
-    try {
-      // Try to switch to Somnia network
-      await provider.request({
-        method: 'wallet_switchEthereumChain',
-        params: [{ chainId: `0x${SOMNIA_CONFIG.chainId.toString(16)}` }]
-      })
-    } catch (switchError: any) {
-      // If network doesn't exist, add it
-      if (switchError.code === 4902) {
-        await provider.request({
-          method: 'wallet_addEthereumChain',
-          params: [{
-            chainId: `0x${SOMNIA_CONFIG.chainId.toString(16)}`,
-            chainName: SOMNIA_CONFIG.name,
-            nativeCurrency: {
-              name: SOMNIA_CONFIG.currency,
-              symbol: SOMNIA_CONFIG.currency,
-              decimals: 18
-            },
-            rpcUrls: [SOMNIA_CONFIG.rpcUrl],
-            blockExplorerUrls: [SOMNIA_CONFIG.blockExplorer]
-          }]
-        })
-      } else {
-        throw switchError
-      }
-    }
-  }
-
-  // Legacy method for backward compatibility
-  async switchToSomnia(): Promise<void> {
-    if (!window.ethereum) return
-    await this.switchToSomniaWithProvider(window.ethereum)
-  }
-
-  async submitScore(score: number, altitude: number, gameTime: number): Promise<string> {
-    if (!this.gameContract) {
-      throw new Error('Game contract not initialized')
-    }
-
-    try {
-      const tx = await this.gameContract.submitScore(score, altitude, gameTime)
-      const receipt = await tx.wait()
-      return receipt.hash
-    } catch (error) {
-      console.error('Failed to submit score:', error)
-      throw error
-    }
-  }
-
-  async getWeeklyLeaderboard(limit: number = 50): Promise<LeaderboardEntry[]> {
-    if (!this.gameContract) return []
-
-    try {
-      const currentWeek = await this.gameContract.getCurrentWeek()
-      const entries = await this.gameContract.getWeeklyTopScores(currentWeek, limit)
-
-      return entries.map((entry: any) => ({
-        player: entry.player,
-        score: Number(entry.score),
-        altitude: Number(entry.altitude),
-        timestamp: Number(entry.timestamp) * 1000 // Convert to milliseconds
-      }))
-    } catch (error) {
-      console.error('Failed to get leaderboard:', error)
-      return []
-    }
-  }
-
-  async getPlayerHistory(playerAddress: string, limit: number = 20): Promise<GameSession[]> {
-    if (!this.gameContract) return []
-
-    try {
-      const sessions = await this.gameContract.getPlayerGameHistory(playerAddress, limit)
-
-      return sessions.map((session: any) => ({
-        score: Number(session.score),
-        altitude: Number(session.altitude),
-        gameTime: Number(session.gameTime),
-        timestamp: Number(session.timestamp) * 1000, // Convert to milliseconds
-        player: session.player
-      }))
-    } catch (error) {
-      console.error('Failed to get player history:', error)
-      return []
-    }
-  }
-
-  async getPlayerStats(playerAddress: string): Promise<PlayerStats> {
-    if (!this.gameContract) {
-      return { totalGames: 0, bestScore: 0, totalTokens: 0 }
-    }
-
-    try {
-      const stats = await this.gameContract.getPlayerStats(playerAddress)
-
-      return {
-        totalGames: Number(stats.totalGames),
-        bestScore: Number(stats.bestScore),
-        totalTokens: Number(stats.totalTokens)
-      }
-    } catch (error) {
-      console.error('Failed to get player stats:', error)
-      return { totalGames: 0, bestScore: 0, totalTokens: 0 }
-    }
-  }
-
-  async getPlayerTokenBalance(playerAddress: string): Promise<number> {
-    if (!this.gameContract) return 0
-
-    try {
-      const balance = await this.gameContract.playerTokens(playerAddress)
-      return Number(balance)
-    } catch (error) {
-      console.error('Failed to get token balance:', error)
-      return 0
-    }
-  }
-
-  async purchaseRevive(): Promise<string> {
-    if (!this.gameContract) {
-      throw new Error('Game contract not initialized')
-    }
-
-    try {
-      const tx = await this.gameContract.purchaseRevive()
-      const receipt = await tx.wait()
-      return receipt.hash
-    } catch (error) {
-      console.error('Failed to purchase revive:', error)
-      throw error
-    }
-  }
-
-  // Get current connected account address
-  async getCurrentAccount(): Promise<string | null> {
-    if (!this.signer) return null
-
-    try {
-      const address = await this.signer.getAddress()
-      return address
-    } catch (error) {
-      console.error('Failed to get current account:', error)
-      return null
-    }
-  }
-
-  // Check if wallet is connected
-  isWalletConnected(): boolean {
-    return this.signer !== null
-  }
-
-  // Utility function to format addresses
-  static formatAddress(address: string): string {
-    if (!address) return ''
-    return `${address.slice(0, 6)}...${address.slice(-4)}`
-  }
-
-  // Utility function to format large numbers
-  static formatNumber(num: number): string {
-    if (num >= 1000000) {
-      return `${(num / 1000000).toFixed(1)}M`
-    } else if (num >= 1000) {
-      return `${(num / 1000).toFixed(1)}K`
-    }
-    return num.toString()
-  }
+// Utility functions for address and number formatting
+export function formatAddress(address: string): string {
+  if (!address) return ''
+  return `${address.slice(0, 6)}...${address.slice(-4)}`
 }
 
-// Create a singleton instance
-export const blockchainManager = new BlockchainManager()
+export function formatNumber(num: number): string {
+  if (num >= 1000000) {
+    return `${(num / 1000000).toFixed(1)}M`
+  } else if (num >= 1000) {
+    return `${(num / 1000).toFixed(1)}K`
+  }
+  return num.toString()
+}
 
 // Types for window.ethereum
 declare global {

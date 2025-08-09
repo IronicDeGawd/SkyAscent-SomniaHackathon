@@ -11,7 +11,6 @@ import {
   useAccount,
 } from "wagmi";
 import {
-  CONTRACT_ADDRESSES,
   GAME_CONTRACT_ABI,
   getGameContractAddress,
 } from "../../utils/blockchain";
@@ -89,12 +88,18 @@ export default function GamePage() {
   const { isLoading: isConfirming, isSuccess: isConfirmed } =
     useWaitForTransactionReceipt({
       hash,
+      timeout: 60_000, // 60 seconds timeout for transaction confirmation
     });
 
   // Handle transaction status changes
   useEffect(() => {
     if (error) {
-      console.error("Transaction error:", error);
+      console.error("Transaction error details:", {
+        error,
+        message: error.message,
+        cause: error.cause,
+        stack: error.stack,
+      });
       let errorMessage =
         "Failed to submit score to blockchain. Playing in offline mode.";
 
@@ -107,11 +112,33 @@ export default function GamePage() {
           "Insufficient funds for transaction. Playing in offline mode.";
       } else if (error.message?.includes("network")) {
         errorMessage = "Network error occurred. Playing in offline mode.";
+      } else if (error.message?.includes("execution reverted")) {
+        if (error.message?.includes("Suspicious score")) {
+          errorMessage =
+            "Score validation failed. Score might be too high for game time (max 100 points/sec, max 50 altitude/sec). Playing in offline mode.";
+        } else {
+          errorMessage =
+            "Contract execution failed. Score may not meet validation rules. Playing in offline mode.";
+        }
+      } else if (error.message?.includes("timeout")) {
+        errorMessage =
+          "Transaction timed out. Network may be congested. Playing in offline mode.";
       }
 
       setSubmissionError(errorMessage);
     }
   }, [error]);
+
+  // Monitor transaction states
+  useEffect(() => {
+    console.log("Transaction states:", {
+      isPending,
+      isConfirming,
+      isConfirmed,
+      hash,
+      error: !!error,
+    });
+  }, [isPending, isConfirming, isConfirmed, hash, error]);
 
   useEffect(() => {
     if (isConfirmed) {
@@ -131,6 +158,12 @@ export default function GamePage() {
       walletAddress,
       contractAddress,
       gameState,
+      canSubmitScore:
+        isAuthenticated &&
+        user &&
+        isWalletConnected &&
+        walletAddress &&
+        contractAddress,
     });
   }, [isAuthenticated, user, isWalletConnected, walletAddress, gameState]);
 
@@ -141,20 +174,31 @@ export default function GamePage() {
     reason?: string
   ) => {
     setGameState("ended");
-    setGameEndReason(reason || "Unknown cause");
+    setGameEndReason(reason || "Game Over");
+
+    // Get contract address first
+    const contractAddress = getGameContractAddress();
+
+    console.log("Score submission attempt:", {
+      finalScore,
+      finalAltitude,
+      finalTime,
+      isAuthenticated,
+      hasUser: !!user,
+      userAddress: user?.address,
+      isWalletConnected,
+      walletAddress,
+      contractAddress,
+    });
 
     // Submit score to blockchain if user is authenticated and wallet is connected
-    if (isAuthenticated && user && isWalletConnected && walletAddress) {
-      const contractAddress = getGameContractAddress();
-
-      if (!contractAddress) {
-        console.error("Game contract address not configured properly");
-        setSubmissionError(
-          "Game contract not configured. Playing in offline mode."
-        );
-        return;
-      }
-
+    if (
+      isAuthenticated &&
+      user &&
+      isWalletConnected &&
+      walletAddress &&
+      contractAddress
+    ) {
       setSubmissionError(null);
 
       try {
@@ -167,18 +211,42 @@ export default function GamePage() {
           contractAddress,
           walletAddress,
           score: finalScore,
-          altitude: finalAltitude,
-          time: finalTime,
+          altitude: Math.floor(finalAltitude),
+          time: Math.floor(finalTime),
           isWalletConnected,
+          // Add validation debug info
+          validationCheck: {
+            minTime: finalTime >= 5,
+            maxScorePerSecond: finalScore <= finalTime * 100,
+            maxAltitudePerSecond: finalAltitude <= finalTime * 50,
+            scoreRate: finalScore / finalTime,
+            altitudeRate: finalAltitude / finalTime,
+          },
         });
 
         // Submit score using wagmi
-        writeContract({
+        console.log("About to call writeContract with:", {
+          address: contractAddress as `0x${string}`,
+          functionName: "submitScore",
+          args: [
+            BigInt(Math.floor(finalScore)),
+            BigInt(Math.floor(finalAltitude)),
+            BigInt(Math.floor(finalTime)),
+          ],
+        });
+
+        const txResult = writeContract({
           address: contractAddress as `0x${string}`,
           abi: GAME_CONTRACT_ABI,
           functionName: "submitScore",
-          args: [BigInt(finalScore), BigInt(finalAltitude), BigInt(finalTime)],
+          args: [
+            BigInt(Math.floor(finalScore)),
+            BigInt(Math.floor(finalAltitude)),
+            BigInt(Math.floor(finalTime)),
+          ],
         });
+
+        console.log("writeContract result:", txResult);
       } catch (error) {
         console.error("Failed to submit score:", error);
         const errorMessage =
@@ -189,20 +257,25 @@ export default function GamePage() {
       }
     } else {
       let reason = "Cannot submit score: ";
-      if (!isAuthenticated) {
-        reason += "User not authenticated";
-      } else if (!user) {
-        reason += "User data not available";
-      } else if (!isWalletConnected) {
-        reason += "Wallet not connected";
-      } else if (!walletAddress) {
-        reason += "Wallet address not available";
-      }
+      const reasons = [];
 
-      console.log(reason);
-      setSubmissionError(
-        "Wallet not properly connected. Playing in offline mode."
-      );
+      if (!contractAddress) reasons.push("Contract not configured");
+      if (!isAuthenticated) reasons.push("User not authenticated");
+      if (!user) reasons.push("User data not available");
+      if (!isWalletConnected) reasons.push("Wallet not connected");
+      if (!walletAddress) reasons.push("Wallet address not available");
+
+      reason += reasons.join(", ");
+
+      console.log(reason, {
+        contractAddress: !!contractAddress,
+        isAuthenticated,
+        hasUser: !!user,
+        isWalletConnected,
+        hasWalletAddress: !!walletAddress,
+      });
+
+      setSubmissionError(`Playing in offline mode: ${reasons.join(", ")}`);
     }
 
     console.log("Game ended:", { finalScore, finalAltitude, finalTime });

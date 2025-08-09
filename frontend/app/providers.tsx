@@ -8,10 +8,10 @@ import {
   useEffect,
   useCallback,
 } from "react";
-import { blockchainManager, type PlayerStats } from "../utils/blockchain";
+import { GAME_CONTRACT_ABI, getGameContractAddress, type PlayerStats } from "../utils/blockchain";
 import { WagmiProvider } from "wagmi";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { useAccount, useConnect, useDisconnect } from "wagmi";
+import { useAccount, useConnect, useDisconnect, useReadContract } from "wagmi";
 import { wagmiConfig } from "../utils/wagmi";
 import { sdk } from "@farcaster/miniapp-sdk";
 
@@ -56,6 +56,8 @@ function InnerProviders({ children }: { children: ReactNode }) {
   const { connect, connectors } = useConnect();
   const { disconnect } = useDisconnect();
 
+  const contractAddress = getGameContractAddress();
+
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [gameContract] = useState(null);
@@ -66,6 +68,18 @@ function InnerProviders({ children }: { children: ReactNode }) {
     fid: number;
     username?: string;
   } | null>(null);
+
+  // Get player stats from blockchain using wagmi
+  const { data: playerStatsData } = useReadContract({
+    address: contractAddress as `0x${string}`,
+    abi: GAME_CONTRACT_ABI,
+    functionName: 'getPlayerStats',
+    args: wagmiAddress ? [wagmiAddress] : undefined,
+    query: { 
+      enabled: !!contractAddress && !!wagmiAddress,
+      refetchInterval: 15000, // Refresh every 15 seconds
+    }
+  });
 
   useEffect(() => {
     const initFarcaster = async () => {
@@ -102,44 +116,64 @@ function InnerProviders({ children }: { children: ReactNode }) {
     }
   }, [isConnected, wagmiAddress, walletAddress]);
 
-  const refreshPlayerStats = useCallback(async () => {
-    if (!walletAddress) return;
-
-    try {
-      const stats = await blockchainManager.getPlayerStats(walletAddress);
-      setPlayerStats(stats);
-    } catch (error) {
-      console.error("Failed to refresh player stats:", error);
+  // Update player stats when blockchain data changes
+  useEffect(() => {
+    if (playerStatsData && wagmiAddress) {
+      const [totalGames, bestScore, totalTokens] = playerStatsData as [bigint, bigint, bigint];
+      console.log("📊 Provider - Player stats from blockchain:", {
+        contractAddress,
+        walletAddress: wagmiAddress,
+        totalGames: Number(totalGames),
+        bestScore: Number(bestScore), 
+        totalTokens: Number(totalTokens),
+      });
+      
+      setPlayerStats({
+        totalGames: Number(totalGames),
+        bestScore: Number(bestScore),
+        totalTokens: Number(totalTokens),
+      });
+    } else {
+      setPlayerStats(null);
     }
-  }, [walletAddress]);
+  }, [playerStatsData, wagmiAddress, contractAddress]);
+
+  const refreshPlayerStats = useCallback(async () => {
+    // This is now handled automatically by wagmi useReadContract
+    console.log("📊 Provider - Player stats will auto-refresh via wagmi");
+  }, []);
 
   // Sync authentication state with wallet address
   useEffect(() => {
     if (walletAddress) {
-      refreshPlayerStats();
+      // Player stats are now auto-loaded via wagmi hook
 
       // Set authentication state when wallet is connected via wagmi
-      if (!isAuthenticated) {
-        const displayName =
-          farcasterUser?.username ||
-          `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}`;
-        setUser({
-          address: walletAddress,
-          displayName,
-          fid: farcasterUser?.fid,
-          username: farcasterUser?.username,
-        });
-        setIsAuthenticated(true);
-      }
+      const displayName =
+        farcasterUser?.username ||
+        `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}`;
+        
+      setUser({
+        address: walletAddress,
+        displayName,
+        fid: farcasterUser?.fid,
+        username: farcasterUser?.username,
+      });
+      setIsAuthenticated(true);
+      
+      console.log("User authenticated:", {
+        address: walletAddress,
+        displayName,
+        isAuthenticated: true,
+      });
     } else {
       // Clear authentication when wallet is disconnected
-      if (isAuthenticated) {
-        setUser(null);
-        setIsAuthenticated(false);
-        setPlayerStats(null);
-      }
+      setUser(null);
+      setIsAuthenticated(false);
+      setPlayerStats(null);
+      console.log("User disconnected");
     }
-  }, [walletAddress, refreshPlayerStats, isAuthenticated, farcasterUser]);
+  }, [walletAddress, farcasterUser]);
 
   const connectWallet = useCallback(async () => {
     try {
@@ -158,17 +192,15 @@ function InnerProviders({ children }: { children: ReactNode }) {
         console.log("Connecting with injected connector");
         connect({ connector: injectedConnector });
       } else {
-        // Fallback to blockchain manager
-        console.log("Using blockchain manager fallback");
-        const address = await blockchainManager.connectWallet();
-        setWalletAddress(address);
+        console.warn("No wallet connectors available");
+        throw new Error("No wallet connectors found. Please try refreshing the page.");
       }
     } catch (error) {
       console.error("Failed to connect wallet:", error);
     } finally {
       if (isLoading) setIsLoading(false);
     }
-  }, [connect, connectors, farcasterUser, isLoading]);
+  }, [connect, connectors, isLoading]);
 
   const signOut = () => {
     disconnect();

@@ -16,7 +16,7 @@ export const CONTRACT_ADDRESSES = {
 }
 
 // Validate contract addresses
-export function validateContractAddress(address: string): boolean {
+export function validateContractAddress(address: string | undefined): boolean {
   if (!address) return false
   // Check if it's a valid Ethereum address format
   const ethAddressRegex = /^0x[a-fA-F0-9]{40}$/
